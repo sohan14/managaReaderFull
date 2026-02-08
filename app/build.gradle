@@ -42,8 +42,11 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     
-    // ML Kit for Text Recognition
+    // ML Kit for Text Recognition - Latin script
     implementation 'com.google.mlkit:text-recognition:16.0.0'
+    
+    // ML Kit for Text Recognition - Chinese/Japanese/Korean (CJK) support
+    implementation 'com.google.mlkit:text-recognition-chinese:16.0.0'
     
     // ML Kit for Face Detection (to help identify characters)
     implementation 'com.google.mlkit:face-detection:16.1.6'

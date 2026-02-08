@@ -11,6 +11,7 @@ import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.tasks.await
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -22,7 +23,8 @@ class MangaAnalyzer(private val context: Context) {
         private const val TAG = "MangaAnalyzer"
     }
 
-    private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
+    // Use Chinese text recognizer which supports CJK (Chinese, Japanese, Korean)
+    private val textRecognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
     private val faceDetectorOptions = FaceDetectorOptions.Builder()
         .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
         .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
