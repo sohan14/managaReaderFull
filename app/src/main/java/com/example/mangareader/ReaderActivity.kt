@@ -17,6 +17,7 @@ import com.example.mangareader.ml.MangaAnalyzer
 import com.example.mangareader.model.Emotion
 import com.example.mangareader.model.MangaPage
 import com.example.mangareader.tts.TTSManager
+import com.example.mangareader.utils.DebugLogger
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.Dispatchers
@@ -221,6 +222,9 @@ class ReaderActivity : AppCompatActivity() {
                         if (bitmap != null) {
                             // Analyze page for speech bubbles
                             Log.d(TAG, "Analyzing page $index...")
+                            DebugLogger.log(TAG, "=== PAGE $index LOADED ===")
+                            DebugLogger.log(TAG, "Original bitmap size: ${bitmap.width} x ${bitmap.height}")
+                            
                             val speechBubbles = mangaAnalyzer.analyzePage(bitmap)
                             
                             Log.d(TAG, "Page $index: Found ${speechBubbles.size} bubbles")

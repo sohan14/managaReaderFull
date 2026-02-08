@@ -38,12 +38,45 @@ class MangaAnalyzer(private val context: Context) {
      * Scale bitmap safely for webtoon images
      */
     private fun scaleBitmapSafely(bitmap: Bitmap): Bitmap {
-        val MAX_DIMENSION = 2048
-        if (bitmap.width <= MAX_DIMENSION && bitmap.height <= MAX_DIMENSION) return bitmap
+        // For webtoons (tall images), we need to keep width large enough for OCR!
+        // Minimum width: 800px (for OCR to read text)
+        // Maximum dimensions: 4096px (ML Kit limit)
         
-        val scale = min(MAX_DIMENSION.toFloat() / bitmap.width, MAX_DIMENSION.toFloat() / bitmap.height)
-        val newWidth = (bitmap.width * scale).toInt()
-        val newHeight = (bitmap.height * scale).toInt()
+        val MIN_WIDTH_FOR_OCR = 800
+        val MAX_WIDTH = 4096
+        val MAX_HEIGHT = 8192
+        
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        DebugLogger.log(TAG, "Original image: ${width} x ${height}")
+        
+        // If already good size, return as-is
+        if (width >= MIN_WIDTH_FOR_OCR && width <= MAX_WIDTH && height <= MAX_HEIGHT) {
+            DebugLogger.log(TAG, "Image size OK, no scaling needed")
+            return bitmap
+        }
+        
+        // Calculate scale to keep width at least MIN_WIDTH_FOR_OCR
+        // but not exceed MAX dimensions
+        var scale = 1.0f
+        
+        if (width < MIN_WIDTH_FOR_OCR) {
+            // Too narrow - scale UP to min width
+            scale = MIN_WIDTH_FOR_OCR.toFloat() / width
+            DebugLogger.log(TAG, "Image too narrow, scaling UP by ${scale}x")
+        } else if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+            // Too large - scale DOWN to fit
+            val scaleWidth = MAX_WIDTH.toFloat() / width
+            val scaleHeight = MAX_HEIGHT.toFloat() / height
+            scale = min(scaleWidth, scaleHeight)
+            DebugLogger.log(TAG, "Image too large, scaling DOWN by ${scale}x")
+        }
+        
+        val newWidth = (width * scale).toInt()
+        val newHeight = (height * scale).toInt()
+        
+        DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
         
         return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
@@ -97,8 +130,22 @@ class MangaAnalyzer(private val context: Context) {
         val bubbles = mutableListOf<SpeechBubble>()
         val imageArea = bitmap.width * bitmap.height
         
+        // ADAPTIVE FILTER: Different thresholds for webtoons vs normal manga
+        val aspectRatio = bitmap.height.toFloat() / bitmap.width
+        val isWebtoon = aspectRatio > 3.0f  // Height > 3x width = webtoon
+        
+        // For webtoons: lower threshold (text is smaller % of total image)
+        // For normal manga: higher threshold (filters out clothing text better)
+        val MIN_AREA_RATIO = if (isWebtoon) {
+            0.0001f  // 0.01% for webtoons (very permissive)
+        } else {
+            0.003f   // 0.3% for normal manga (filters clothing text)
+        }
+        
         DebugLogger.log(TAG, "--- Filtering ${blocks.size} text blocks ---")
         DebugLogger.log(TAG, "Image area: $imageArea pixels")
+        DebugLogger.log(TAG, "Image aspect ratio: ${String.format("%.2f", aspectRatio)} (${if (isWebtoon) "WEBTOON" else "NORMAL MANGA"})")
+        DebugLogger.log(TAG, "Using area threshold: ${String.format("%.4f", MIN_AREA_RATIO * 100)}%")
         
         // Filter blocks by characteristics of speech bubbles
         val filteredBlocks = blocks.filterIndexed { index, (box, text) ->
@@ -116,11 +163,9 @@ class MangaAnalyzer(private val context: Context) {
             }
             DebugLogger.log(TAG, "  ✅ Filter 1: Is dialogue")
             
-            // FILTER 2: Must be big enough
-            // LOWERED for webtoons! Speech bubbles in tall images are smaller %
-            // Min 0.01% = about 2000 pixels (45x45) for scaled image
-            if (areaRatio < 0.0001f) {
-                DebugLogger.log(TAG, "  ❌ REJECTED: Too small (${String.format("%.4f", areaRatio * 100)}% < 0.01%)")
+            // FILTER 2: Must be big enough (adaptive threshold!)
+            if (areaRatio < MIN_AREA_RATIO) {
+                DebugLogger.log(TAG, "  ❌ REJECTED: Too small (${String.format("%.4f", areaRatio * 100)}% < ${String.format("%.4f", MIN_AREA_RATIO * 100)}%)")
                 return@filterIndexed false
             }
             DebugLogger.log(TAG, "  ✅ Filter 2: Big enough")
