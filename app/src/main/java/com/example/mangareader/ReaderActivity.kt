@@ -11,7 +11,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.example.mangareader.ml.MangaAnalyzer
 import com.example.mangareader.model.Emotion
@@ -73,15 +72,13 @@ class ReaderActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         selectVoiceButton = findViewById(R.id.selectVoiceButton)
         
-        // Setup RecyclerView
-        val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        // Setup RecyclerView for VERTICAL webtoon scrolling
+        val layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
         recyclerView.layoutManager = layoutManager
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
-        // Add snap helper for page-by-page scrolling
-        val snapHelper = PagerSnapHelper()
-        snapHelper.attachToRecyclerView(recyclerView)
+        // NO snap helper for webtoons - allow smooth vertical scrolling
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
