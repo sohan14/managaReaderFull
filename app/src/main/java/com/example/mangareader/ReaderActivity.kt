@@ -2,6 +2,7 @@ package com.example.mangareader
 
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import android.widget.ProgressBar
@@ -26,6 +27,10 @@ import kotlinx.coroutines.withContext
  * Main reading activity with auto-narration and scrolling
  */
 class ReaderActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "ReaderActivity"
+    }
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var playPauseButton: FloatingActionButton
@@ -215,7 +220,13 @@ class ReaderActivity : AppCompatActivity() {
                         
                         if (bitmap != null) {
                             // Analyze page for speech bubbles
+                            Log.d(TAG, "Analyzing page $index...")
                             val speechBubbles = mangaAnalyzer.analyzePage(bitmap)
+                            
+                            Log.d(TAG, "Page $index: Found ${speechBubbles.size} bubbles")
+                            speechBubbles.forEachIndexed { bubbleIndex, bubble ->
+                                Log.d(TAG, "  Bubble $bubbleIndex: '${bubble.text}'")
+                            }
                             
                             val mangaPage = MangaPage(
                                 pageNumber = index,
@@ -233,11 +244,25 @@ class ReaderActivity : AppCompatActivity() {
                 }
                 
                 progressBar.visibility = View.GONE
-                statusText.text = "Ready to play"
+                
+                // Count total bubbles
+                val totalBubbles = mangaPages.sumOf { it.speechBubbles.size }
+                Log.d(TAG, "=== FINAL RESULT: ${mangaPages.size} pages, $totalBubbles total bubbles ===")
+                
+                statusText.text = if (totalBubbles > 0) {
+                    "Ready to play - $totalBubbles bubbles found"
+                } else {
+                    "Ready to play - NO BUBBLES DETECTED! Check logs!"
+                }
                 
                 if (mangaPages.isEmpty()) {
                     Toast.makeText(this@ReaderActivity, 
                         "No manga pages loaded. Please select manga images.", 
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else if (totalBubbles == 0) {
+                    Toast.makeText(this@ReaderActivity,
+                        "No speech bubbles detected! OCR may have failed. Check Debug Logs menu.",
                         Toast.LENGTH_LONG
                     ).show()
                 }

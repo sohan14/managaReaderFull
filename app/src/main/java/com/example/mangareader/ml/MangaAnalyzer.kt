@@ -3,6 +3,7 @@ package com.example.mangareader.ml
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.util.Log
 import com.example.mangareader.model.*
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
@@ -15,6 +16,10 @@ import kotlin.math.sqrt
 import kotlin.math.abs
 
 class MangaAnalyzer(private val context: Context) {
+
+    companion object {
+        private const val TAG = "MangaAnalyzer"
+    }
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
     private val faceDetectorOptions = FaceDetectorOptions.Builder()
@@ -39,31 +44,44 @@ class MangaAnalyzer(private val context: Context) {
     }
 
     /**
-     * Analyze manga page for speech bubbles - IMPROVED FILTERING
+     * Analyze manga page for speech bubbles - IMPROVED FILTERING with LOGGING
      */
     suspend fun analyzePage(bitmap: Bitmap): List<SpeechBubble> {
         val safeBitmap = scaleBitmapSafely(bitmap)
         val image = InputImage.fromBitmap(safeBitmap, 0)
         
+        Log.d(TAG, "=== OCR Analysis Start ===")
+        Log.d(TAG, "Image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
+        
         val textResult = textRecognizer.process(image).await()
         val faces = faceDetector.process(image).await()
         
+        Log.d(TAG, "OCR found ${textResult.textBlocks.size} text blocks")
+        Log.d(TAG, "Face detection found ${faces.size} faces")
+        
         // First pass: collect all text blocks
         val rawBlocks = mutableListOf<Pair<Rect, String>>()
-        textResult.textBlocks.forEach { block ->
-            val boundingBox = block.boundingBox ?: return@forEach
+        textResult.textBlocks.forEachIndexed { index, block ->
+            val boundingBox = block.boundingBox ?: return@forEachIndexed
             val text = block.text
             rawBlocks.add(Pair(boundingBox, text))
+            Log.d(TAG, "Block $index: '${text.take(20)}...' size=${boundingBox.width()}x${boundingBox.height()} area=${boundingBox.width() * boundingBox.height()}")
         }
         
         // Filter and merge blocks to form speech bubbles
         val speechBubbles = filterAndMergeBubbles(rawBlocks, safeBitmap, faces)
         
+        Log.d(TAG, "Final result: ${speechBubbles.size} speech bubbles detected")
+        speechBubbles.forEachIndexed { index, bubble ->
+            Log.d(TAG, "Bubble $index: '${bubble.text.take(30)}...' emotion=${bubble.emotion} gender=${bubble.characterGender}")
+        }
+        Log.d(TAG, "=== OCR Analysis End ===")
+        
         return speechBubbles.sortedBy { it.readingOrder }
     }
 
     /**
-     * IMPROVED: Filter out non-bubble text and merge lines in same bubble
+     * IMPROVED: Filter out non-bubble text and merge lines in same bubble - WITH LOGGING
      */
     private fun filterAndMergeBubbles(
         blocks: List<Pair<Rect, String>>,
@@ -74,31 +92,56 @@ class MangaAnalyzer(private val context: Context) {
         val bubbles = mutableListOf<SpeechBubble>()
         val imageArea = bitmap.width * bitmap.height
         
+        Log.d(TAG, "--- Filtering ${blocks.size} text blocks ---")
+        Log.d(TAG, "Image area: $imageArea pixels")
+        
         // Filter blocks by characteristics of speech bubbles
-        val filteredBlocks = blocks.filter { (box, text) ->
+        val filteredBlocks = blocks.filterIndexed { index, (box, text) ->
             val area = box.width() * box.height()
             val areaRatio = area.toFloat() / imageArea
             
+            Log.d(TAG, "Block $index: text='${text.take(15)}...'")
+            Log.d(TAG, "  Size: ${box.width()}x${box.height()} = $area pixels")
+            Log.d(TAG, "  Area ratio: ${String.format("%.4f", areaRatio * 100)}%")
+            
             // FILTER 1: Must be dialogue (has letters)
-            if (!isLikelyDialogue(text)) return@filter false
+            if (!isLikelyDialogue(text)) {
+                Log.d(TAG, "  ❌ REJECTED: Not dialogue (no letters)")
+                return@filterIndexed false
+            }
+            Log.d(TAG, "  ✅ Filter 1: Is dialogue")
             
             // FILTER 2: Must be big enough
             // LOWERED for webtoons! Speech bubbles in tall images are smaller %
             // Min 0.01% = about 2000 pixels (45x45) for scaled image
-            if (areaRatio < 0.0001f) return@filter false
+            if (areaRatio < 0.0001f) {
+                Log.d(TAG, "  ❌ REJECTED: Too small (${String.format("%.4f", areaRatio * 100)}% < 0.01%)")
+                return@filterIndexed false
+            }
+            Log.d(TAG, "  ✅ Filter 2: Big enough")
             
             // FILTER 3: Aspect ratio check (speech bubbles are usually wider than tall)
             val aspectRatio = box.width().toFloat() / box.height()
-            if (aspectRatio > 10 || aspectRatio < 0.3) return@filter false
+            Log.d(TAG, "  Aspect ratio: ${String.format("%.2f", aspectRatio)}")
+            if (aspectRatio > 10 || aspectRatio < 0.3) {
+                Log.d(TAG, "  ❌ REJECTED: Bad aspect ratio (${String.format("%.2f", aspectRatio)})")
+                return@filterIndexed false
+            }
+            Log.d(TAG, "  ✅ Filter 3: Good aspect ratio")
             
             // FILTER 4: Position check (speech bubbles usually in upper 2/3 of image for webtoons)
             // Allow all for now, but can filter if needed
             
+            Log.d(TAG, "  ✅✅✅ ACCEPTED as speech bubble!")
             true
         }
         
+        Log.d(TAG, "After filtering: ${filteredBlocks.size} blocks passed")
+        
         // Group nearby blocks into single bubbles (for multi-line bubbles)
         val grouped = groupNearbyBlocks(filteredBlocks)
+        
+        Log.d(TAG, "After grouping: ${grouped.size} bubble groups")
         
         // Convert groups to SpeechBubbles
         grouped.forEachIndexed { index, group ->
@@ -113,6 +156,8 @@ class MangaAnalyzer(private val context: Context) {
             } ?: Gender.UNKNOWN
             
             val emotion = detectEmotion(mergedText)
+            
+            Log.d(TAG, "Bubble group $index: '${mergedText.take(20)}...' gender=$gender emotion=$emotion")
             
             bubbles.add(
                 SpeechBubble(
