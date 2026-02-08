@@ -68,11 +68,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        
-        pdfProcessor = PDFProcessor(this)
-        initViews()
-        setupListeners()
+        try {
+            setContentView(R.layout.activity_main)
+            
+            pdfProcessor = PDFProcessor(this)
+            initViews()
+            setupListeners()
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "Error starting app: ${e.message}\nPlease report this bug",
+                Toast.LENGTH_LONG
+            ).show()
+            e.printStackTrace()
+            // Don't finish() - let user see error
+        }
     }
 
     private fun initViews() {

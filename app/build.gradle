@@ -62,9 +62,5 @@ dependencies {
     // RecyclerView
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
     
-    // PDF Rendering (Android built-in)
-    // No additional dependency needed for PdfRenderer
-    
-    // Apache PDFBox for advanced PDF processing (alternative)
-    implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
+    // PDF Rendering uses Android's built-in PdfRenderer (no dependency needed)
 }

@@ -51,11 +51,21 @@ class ReaderActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_reader)
-        
-        initViews()
-        initManagers()
-        loadMangaPages()
+        try {
+            setContentView(R.layout.activity_reader)
+            
+            initViews()
+            initManagers()
+            loadMangaPages()
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                "Error loading reader: ${e.message}",
+                Toast.LENGTH_LONG
+            ).show()
+            e.printStackTrace()
+            finish()
+        }
     }
 
     private fun initViews() {
