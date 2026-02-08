@@ -40,12 +40,12 @@ class MangaAnalyzer(private val context: Context) {
      * Scale bitmap safely for webtoon images
      */
     private fun scaleBitmapSafely(bitmap: Bitmap): Bitmap {
-        // For Korean/CJK text, we need even HIGHER resolution!
-        // Korean characters are complex and need more pixels
-        // UPDATED: Increased limits for better CJK OCR
+        // CRITICAL: Device has 268MB limit (from crash logs)
+        // We need to stay WELL BELOW that for ML Kit's internal buffers
+        // Target: ~180MB (~45M pixels) to leave 88MB headroom
         
-        val MIN_WIDTH_FOR_OCR = 2000  // Increased for Korean text (was 1500)
-        val MAX_PIXELS = 60_000_000   // ~240MB in memory (was 40M)
+        val MIN_WIDTH_FOR_OCR = 1600  // Balanced for Korean while staying safe
+        val MAX_PIXELS = 45_000_000   // ~180MB (45M * 4 bytes) - safe under 268MB limit
         
         val width = bitmap.width
         val height = bitmap.height
@@ -53,6 +53,8 @@ class MangaAnalyzer(private val context: Context) {
         
         DebugLogger.log(TAG, "Original image: ${width} x ${height}")
         DebugLogger.log(TAG, "Total pixels: ${totalPixels} (${totalPixels * 4 / 1_000_000}MB)")
+        DebugLogger.log(TAG, "Device memory limit: 268MB (from crash logs)")
+        DebugLogger.log(TAG, "Target: 180MB (~45M pixels) to leave headroom for ML Kit")
         
         // Check if image fits in memory
         if (totalPixels <= MAX_PIXELS) {
@@ -82,25 +84,31 @@ class MangaAnalyzer(private val context: Context) {
         
         // Ensure width doesn't drop below minimum
         if (newWidth < MIN_WIDTH_FOR_OCR) {
-            // Force minimum width for Korean OCR, accept more memory
+            // Force minimum width for Korean OCR
             val widthScale = MIN_WIDTH_FOR_OCR.toFloat() / width
             newWidth = MIN_WIDTH_FOR_OCR
             newHeight = (height * widthScale).toInt()
             
             val newPixels = newWidth.toLong() * newHeight.toLong()
+            val newMemoryMB = newPixels * 4 / 1_000_000
+            
             DebugLogger.log(TAG, "Image too large, scaling DOWN but keeping min width for Korean OCR")
             DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
-            DebugLogger.log(TAG, "New pixels: ${newPixels} (${newPixels * 4 / 1_000_000}MB)")
+            DebugLogger.log(TAG, "New pixels: ${newPixels} (~${newMemoryMB}MB)")
             
-            if (newPixels > MAX_PIXELS * 1.5) {
-                // Still too big even with min width
-                DebugLogger.log(TAG, "WARNING: Image still large (${newPixels * 4 / 1_000_000}MB), may run out of memory!")
-                DebugLogger.log(TAG, "But Korean text needs high resolution, so accepting the risk")
+            if (newMemoryMB > 230) {
+                // Getting close to limit - warn but continue
+                DebugLogger.log(TAG, "WARNING: Memory usage ${newMemoryMB}MB is close to 268MB limit")
+                DebugLogger.log(TAG, "May crash on some devices. Proceeding anyway for Korean OCR quality.")
+            } else {
+                DebugLogger.log(TAG, "Memory usage ${newMemoryMB}MB is safe (${268 - newMemoryMB}MB headroom)")
             }
         } else {
-            DebugLogger.log(TAG, "Image too large, scaling DOWN to fit memory while keeping good resolution for Korean")
+            val newMemoryMB = newWidth.toLong() * newHeight.toLong() * 4 / 1_000_000
+            DebugLogger.log(TAG, "Image too large, scaling DOWN to fit safely in memory")
             DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
-            DebugLogger.log(TAG, "New pixels: ${newWidth.toLong() * newHeight.toLong()} (${newWidth.toLong() * newHeight.toLong() * 4 / 1_000_000}MB)")
+            DebugLogger.log(TAG, "New pixels: ${newWidth.toLong() * newHeight.toLong()} (~${newMemoryMB}MB)")
+            DebugLogger.log(TAG, "Memory headroom: ${268 - newMemoryMB}MB")
         }
         
         return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
