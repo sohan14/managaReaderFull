@@ -38,12 +38,14 @@ class MangaAnalyzer(private val context: Context) {
      * Scale bitmap safely for webtoon images
      */
     private fun scaleBitmapSafely(bitmap: Bitmap): Bitmap {
-        // DUAL CONSTRAINTS:
-        // 1. Width must be readable for OCR (≥ 1000px)
-        // 2. Total size must fit in memory (≤ ~25M pixels = ~100MB)
+        // DUAL CONSTRAINTS (UPDATED for better OCR):
+        // 1. Width must be readable for OCR (≥ 1500px for good accuracy)
+        // 2. Total size must fit in memory (≤ ~40M pixels = ~160MB)
+        //    Note: Increased from 25M to 40M because modern devices can handle it
+        //    and we need better OCR quality
         
-        val MIN_WIDTH_FOR_OCR = 1000
-        val MAX_PIXELS = 25_000_000  // ~100MB in memory (25M * 4 bytes)
+        val MIN_WIDTH_FOR_OCR = 1500  // Increased for better OCR accuracy
+        val MAX_PIXELS = 40_000_000   // ~160MB in memory (40M * 4 bytes)
         
         val width = bitmap.width
         val height = bitmap.height
@@ -92,7 +94,7 @@ class MangaAnalyzer(private val context: Context) {
             
             if (newPixels > MAX_PIXELS * 1.5) {
                 // Still too big even with min width - this is a problem
-                DebugLogger.log(TAG, "WARNING: Image still large, may run out of memory!")
+                DebugLogger.log(TAG, "WARNING: Image still large (${newPixels * 4 / 1_000_000}MB), may run out of memory!")
             }
         } else {
             DebugLogger.log(TAG, "Image too large, scaling DOWN to fit memory")
