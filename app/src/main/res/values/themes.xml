@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Base application theme using AppCompat -->
-    <style name="Theme.MangaReader" parent="Theme.AppCompat.Light.DarkActionBar">
+    <!-- Base application theme using Material Components (compatible with AppCompatActivity) -->
+    <style name="Theme.MangaReader" parent="Theme.MaterialComponents.Light.DarkActionBar">
         <!-- Primary brand color -->
         <item name="colorPrimary">#6200EE</item>
         <item name="colorPrimaryDark">#3700B3</item>
