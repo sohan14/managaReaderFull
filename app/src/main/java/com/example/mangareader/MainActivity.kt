@@ -6,12 +6,15 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.mangareader.utils.CrashLogger
 import com.example.mangareader.utils.PDFProcessor
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textview.MaterialTextView
@@ -68,6 +71,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Initialize crash logger
+        CrashLogger.getInstance(this)
+        
         try {
             setContentView(R.layout.activity_main)
             
@@ -77,11 +84,10 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(
                 this,
-                "Error starting app: ${e.message}\nPlease report this bug",
+                "Error starting app: ${e.message}\nCheck Debug menu for crash logs",
                 Toast.LENGTH_LONG
             ).show()
             e.printStackTrace()
-            // Don't finish() - let user see error
         }
     }
 
@@ -217,6 +223,52 @@ class MainActivity : AppCompatActivity() {
         
         // If we couldn't get the path, return the URI string
         return result ?: uri.toString()
+    }
+    
+    /**
+     * Create options menu with debug crash logs option
+     */
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menu?.add(0, 1, 0, "🐛 Debug Logs")
+        return true
+    }
+    
+    /**
+     * Handle menu item clicks
+     */
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            1 -> {
+                showCrashLogsDialog()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+    
+    /**
+     * Show crash logs dialog with copy and clear options
+     */
+    private fun showCrashLogsDialog() {
+        val crashLogger = CrashLogger.getInstance(this)
+        val logs = crashLogger.getAllLogs()
+        
+        AlertDialog.Builder(this)
+            .setTitle("🐛 Crash Logs")
+            .setMessage(logs)
+            .setPositiveButton("📋 Copy to Clipboard") { _, _ ->
+                if (crashLogger.copyLogsToClipboard()) {
+                    Toast.makeText(this, "Logs copied! You can paste and send them now", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Failed to copy logs", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("🗑️ Clear Logs") { _, _ ->
+                crashLogger.clearLogs()
+                Toast.makeText(this, "Logs cleared", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("Close", null)
+            .show()
     }
     
     override fun onDestroy() {
