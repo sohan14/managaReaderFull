@@ -56,9 +56,13 @@ class MangaPageAdapter(
         
         if (bitmap != null) {
             // Set zoom limits for webtoon viewing
-            holder.photoView.maximumScale = 5.0f
-            holder.photoView.mediumScale = 2.5f
-            holder.photoView.minimumScale = 1.0f
+            // Start zoomed OUT to see more content
+            holder.photoView.minimumScale = 0.5f   // Can zoom out to half size
+            holder.photoView.mediumScale = 1.0f    // Default/fit size
+            holder.photoView.maximumScale = 3.0f   // Can zoom in to 3x
+            
+            // Start at fit-to-screen scale (not 1:1)
+            holder.photoView.setScale(1.0f, true)
             
             // If this page and bubble are highlighted, draw overlay
             if (position == highlightedPage && highlightedBubble >= 0 && highlightedBubble < page.speechBubbles.size) {

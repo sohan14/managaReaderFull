@@ -82,9 +82,10 @@ class MangaAnalyzer(private val context: Context) {
             // FILTER 1: Must be dialogue (has letters)
             if (!isLikelyDialogue(text)) return@filter false
             
-            // FILTER 2: Must be big enough (speech bubbles > 0.5% of image)
-            // This filters out text on shirts/caps which is tiny
-            if (areaRatio < 0.005f) return@filter false
+            // FILTER 2: Must be big enough
+            // LOWERED for webtoons! Speech bubbles in tall images are smaller %
+            // Min 0.01% = about 2000 pixels (45x45) for scaled image
+            if (areaRatio < 0.0001f) return@filter false
             
             // FILTER 3: Aspect ratio check (speech bubbles are usually wider than tall)
             val aspectRatio = box.width().toFloat() / box.height()
