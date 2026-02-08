@@ -40,14 +40,12 @@ class MangaAnalyzer(private val context: Context) {
      * Scale bitmap safely for webtoon images
      */
     private fun scaleBitmapSafely(bitmap: Bitmap): Bitmap {
-        // DUAL CONSTRAINTS (UPDATED for better OCR):
-        // 1. Width must be readable for OCR (≥ 1500px for good accuracy)
-        // 2. Total size must fit in memory (≤ ~40M pixels = ~160MB)
-        //    Note: Increased from 25M to 40M because modern devices can handle it
-        //    and we need better OCR quality
+        // For Korean/CJK text, we need even HIGHER resolution!
+        // Korean characters are complex and need more pixels
+        // UPDATED: Increased limits for better CJK OCR
         
-        val MIN_WIDTH_FOR_OCR = 1500  // Increased for better OCR accuracy
-        val MAX_PIXELS = 40_000_000   // ~160MB in memory (40M * 4 bytes)
+        val MIN_WIDTH_FOR_OCR = 2000  // Increased for Korean text (was 1500)
+        val MAX_PIXELS = 60_000_000   // ~240MB in memory (was 40M)
         
         val width = bitmap.width
         val height = bitmap.height
@@ -61,7 +59,7 @@ class MangaAnalyzer(private val context: Context) {
             // Fits in memory!
             if (width >= MIN_WIDTH_FOR_OCR) {
                 // Perfect size - keep it!
-                DebugLogger.log(TAG, "Image size OK, no scaling needed")
+                DebugLogger.log(TAG, "Image size OK for Korean OCR, no scaling needed")
                 return bitmap
             } else {
                 // Too narrow but small enough to scale up
@@ -69,7 +67,7 @@ class MangaAnalyzer(private val context: Context) {
                 val newWidth = MIN_WIDTH_FOR_OCR
                 val newHeight = (height * scale).toInt()
                 
-                DebugLogger.log(TAG, "Image too narrow, scaling UP to min width")
+                DebugLogger.log(TAG, "Image too narrow for Korean OCR, scaling UP to min width")
                 DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
                 
                 return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
@@ -84,22 +82,23 @@ class MangaAnalyzer(private val context: Context) {
         
         // Ensure width doesn't drop below minimum
         if (newWidth < MIN_WIDTH_FOR_OCR) {
-            // Force minimum width, accept slightly more pixels
+            // Force minimum width for Korean OCR, accept more memory
             val widthScale = MIN_WIDTH_FOR_OCR.toFloat() / width
             newWidth = MIN_WIDTH_FOR_OCR
             newHeight = (height * widthScale).toInt()
             
             val newPixels = newWidth.toLong() * newHeight.toLong()
-            DebugLogger.log(TAG, "Image too large, scaling DOWN but keeping min width")
+            DebugLogger.log(TAG, "Image too large, scaling DOWN but keeping min width for Korean OCR")
             DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
             DebugLogger.log(TAG, "New pixels: ${newPixels} (${newPixels * 4 / 1_000_000}MB)")
             
             if (newPixels > MAX_PIXELS * 1.5) {
-                // Still too big even with min width - this is a problem
+                // Still too big even with min width
                 DebugLogger.log(TAG, "WARNING: Image still large (${newPixels * 4 / 1_000_000}MB), may run out of memory!")
+                DebugLogger.log(TAG, "But Korean text needs high resolution, so accepting the risk")
             }
         } else {
-            DebugLogger.log(TAG, "Image too large, scaling DOWN to fit memory")
+            DebugLogger.log(TAG, "Image too large, scaling DOWN to fit memory while keeping good resolution for Korean")
             DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
             DebugLogger.log(TAG, "New pixels: ${newWidth.toLong() * newHeight.toLong()} (${newWidth.toLong() * newHeight.toLong() * 4 / 1_000_000}MB)")
         }
@@ -117,11 +116,44 @@ class MangaAnalyzer(private val context: Context) {
         DebugLogger.log(TAG, "=== OCR Analysis Start ===")
         DebugLogger.log(TAG, "Image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
         
-        val textResult = textRecognizer.process(image).await()
-        val faces = faceDetector.process(image).await()
+        // Process text recognition with error handling
+        val textResult = try {
+            DebugLogger.log(TAG, "Starting CJK text recognition...")
+            val result = textRecognizer.process(image).await()
+            DebugLogger.log(TAG, "CJK text recognition completed successfully")
+            result
+        } catch (e: Exception) {
+            DebugLogger.log(TAG, "ERROR in text recognition: ${e.message}")
+            DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
+            e.printStackTrace()
+            throw e
+        }
+        
+        // Process face detection with error handling
+        val faces = try {
+            DebugLogger.log(TAG, "Starting face detection...")
+            val result = faceDetector.process(image).await()
+            DebugLogger.log(TAG, "Face detection completed successfully")
+            result
+        } catch (e: Exception) {
+            DebugLogger.log(TAG, "ERROR in face detection: ${e.message}")
+            DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
+            e.printStackTrace()
+            emptyList()
+        }
         
         DebugLogger.log(TAG, "OCR found ${textResult.textBlocks.size} text blocks")
         DebugLogger.log(TAG, "Face detection found ${faces.size} faces")
+        
+        if (textResult.textBlocks.isEmpty()) {
+            DebugLogger.log(TAG, "WARNING: OCR returned 0 text blocks!")
+            DebugLogger.log(TAG, "This could mean:")
+            DebugLogger.log(TAG, "  1. CJK model not downloaded yet (downloads on first use)")
+            DebugLogger.log(TAG, "  2. Image quality too low for OCR")
+            DebugLogger.log(TAG, "  3. Text too stylized/artistic")
+            DebugLogger.log(TAG, "  4. Silent OCR processing error")
+            DebugLogger.log(TAG, "Try selecting the image again - model may be downloading in background")
+        }
         
         // First pass: collect all text blocks
         val rawBlocks = mutableListOf<Pair<Rect, String>>()
