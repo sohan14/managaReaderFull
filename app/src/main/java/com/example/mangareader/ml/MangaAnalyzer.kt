@@ -15,13 +15,14 @@ import kotlin.math.sqrt
 
 class MangaAnalyzer(private val context: Context) {
 
-    private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT)
+    private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.Builder().build())
     private val faceDetectorOptions = FaceDetectorOptions.Builder()
         .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
         .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
         .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
         .build()
     private val faceDetector = FaceDetection.getClient(faceDetectorOptions)
+
 
     private fun scaleBitmapSafely(bitmap: Bitmap): Bitmap {
         val MAX_DIMENSION = 2048

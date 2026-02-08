@@ -99,7 +99,7 @@ class TTSManager(context: Context) {
     /**
      * Set selected voice for gender
      */
-    fun setVoice For(gender: Gender, voice: Voice) {
+    fun setVoiceFor(gender: Gender, voice: Voice) {
         when (gender) {
             Gender.MALE -> selectedMaleVoice = voice
             Gender.FEMALE -> selectedFemaleVoice = voice
