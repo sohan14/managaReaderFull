@@ -34,8 +34,7 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var speedLabel: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
-    private lateinit var genderToggleButton: MaterialButton
-    private lateinit var voiceInfoButton: MaterialButton
+    private lateinit var selectVoiceButton: MaterialButton
     
     private lateinit var ttsManager: TTSManager
     private lateinit var mangaAnalyzer: MangaAnalyzer
@@ -45,9 +44,6 @@ class ReaderActivity : AppCompatActivity() {
     private var currentPageIndex = 0
     private var isPlaying = false
     private var currentBubbleIndex = 0
-    
-    // Gender detection override
-    private var manualGenderMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,8 +71,7 @@ class ReaderActivity : AppCompatActivity() {
         speedLabel = findViewById(R.id.speedLabel)
         progressBar = findViewById(R.id.progressBar)
         statusText = findViewById(R.id.statusText)
-        genderToggleButton = findViewById(R.id.genderToggleButton)
-        voiceInfoButton = findViewById(R.id.voiceInfoButton)
+        selectVoiceButton = findViewById(R.id.selectVoiceButton)
         
         // Setup RecyclerView
         val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
@@ -120,24 +115,66 @@ class ReaderActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
         
-        // Gender detection toggle
-        genderToggleButton.setOnClickListener {
-            manualGenderMode = !manualGenderMode
-            genderToggleButton.text = if (manualGenderMode) "Manual Gender" else "Auto Gender"
-            Toast.makeText(this, 
-                if (manualGenderMode) "Manual gender selection enabled" else "Auto gender detection enabled",
-                Toast.LENGTH_SHORT
-            ).show()
+        // Voice selection button
+        selectVoiceButton.setOnClickListener {
+            showVoiceSelectionDialog()
         }
-        
-        // Voice info button
-        voiceInfoButton.setOnClickListener {
-            val voiceInfo = ttsManager.getVoiceInfo()
+    }
+    
+    /**
+     * Show dialog to select TTS voices
+     */
+    private fun showVoiceSelectionDialog() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            val femaleVoices = ttsManager.femaleVoices
+            val maleVoices = ttsManager.maleVoices
+            
+            if (femaleVoices.isEmpty() && maleVoices.isEmpty()) {
+                Toast.makeText(this, "No voices available. Install Google TTS from Play Store!", Toast.LENGTH_LONG).show()
+                return
+            }
+            
+            // Build voice selection dialog
+            val items = mutableListOf<String>()
+            items.add("--- FEMALE VOICES (${femaleVoices.size}) ---")
+            femaleVoices.forEach { voice ->
+                items.add("👧 ${ttsManager.getVoiceName(voice)}")
+            }
+            items.add("--- MALE VOICES (${maleVoices.size}) ---")
+            maleVoices.forEach { voice ->
+                items.add("👨 ${ttsManager.getVoiceName(voice)}")
+            }
+            
             androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("TTS Voice Information")
-                .setMessage(voiceInfo)
-                .setPositiveButton("OK", null)
+                .setTitle("🎤 Select Voice")
+                .setItems(items.toTypedArray()) { _, which ->
+                    // Skip header rows
+                    if (items[which].startsWith("---")) return@setItems
+                    
+                    // Determine if female or male
+                    val isFemale = which <= femaleVoices.size
+                    
+                    if (isFemale) {
+                        val voiceIndex = which - 1 // Skip header
+                        if (voiceIndex >= 0 && voiceIndex < femaleVoices.size) {
+                            val selectedVoice = femaleVoices[voiceIndex]
+                            ttsManager.setVoiceFor(com.example.mangareader.model.Gender.FEMALE, selectedVoice)
+                            selectVoiceButton.text = "🎤 ${ttsManager.getVoiceName(selectedVoice)}"
+                            Toast.makeText(this, "Female voice updated!", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        val voiceIndex = which - femaleVoices.size - 2 // Skip both headers
+                        if (voiceIndex >= 0 && voiceIndex < maleVoices.size) {
+                            val selectedVoice = maleVoices[voiceIndex]
+                            ttsManager.setVoiceFor(com.example.mangareader.model.Gender.MALE, selectedVoice)
+                            Toast.makeText(this, "Male voice updated!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                .setNegativeButton("Cancel", null)
                 .show()
+        } else {
+            Toast.makeText(this, "Voice selection requires Android 5.0+", Toast.LENGTH_LONG).show()
         }
     }
 

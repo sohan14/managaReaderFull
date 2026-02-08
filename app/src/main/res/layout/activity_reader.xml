@@ -85,22 +85,13 @@
             android:gravity="center"
             android:layout_marginBottom="8dp">
 
-            <!-- Voice info button -->
+            <!-- VOICE SELECTION BUTTON -->
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/voiceInfoButton"
-                android:layout_width="wrap_content"
+                android:id="@+id/selectVoiceButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="Voice Info"
-                android:textSize="12sp"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_marginEnd="8dp" />
-
-            <!-- Gender toggle button -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/genderToggleButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Auto Gender"
+                android:layout_weight="1"
+                android:text="🎤 Select Voice"
                 android:textSize="12sp"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_marginEnd="8dp" />

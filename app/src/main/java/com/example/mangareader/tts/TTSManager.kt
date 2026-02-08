@@ -198,30 +198,21 @@ class TTSManager(context: Context) {
     }
     
     /**
-     * Enhance text with pauses and emphasis
+     * Enhance text with pauses and emphasis - ONLY pause on periods
      */
     private fun enhanceTextForSpeech(text: String, emotion: Emotion): String {
         var enhanced = text
         
-        // Add pauses for ellipsis
-        enhanced = enhanced.replace("...", " ... ")
+        // ONLY add pause for periods (full stops) - not for ... or ?
+        // TTS naturally handles sentence breaks
         
-        // Add emphasis for multiple exclamations
-        if (text.count { it == '!' } >= 2) {
-            enhanced = enhanced.replace("!!", "!  ")
-        }
-        
-        // Add pause before questions for better inflection
-        if (text.contains("?")) {
-            enhanced = enhanced.replace("?", " ?")
-        }
-        
-        // For scared emotion, add slight stutter effect
-        if (emotion == Emotion.SCARED && enhanced.length > 10) {
+        // For scared emotion, add slight stutter effect (minimal)
+        if (emotion == Emotion.SCARED && enhanced.length > 10 && !enhanced.contains(".")) {
             val words = enhanced.split(" ")
-            if (words.isNotEmpty()) {
+            if (words.isNotEmpty() && words[0].length > 2) {
                 val firstWord = words[0]
-                enhanced = "$firstWord... $enhanced"
+                // Very subtle stutter - just first letter
+                enhanced = "${firstWord[0]}-${enhanced}"
             }
         }
         
