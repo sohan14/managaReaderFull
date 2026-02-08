@@ -7,12 +7,12 @@ import android.graphics.Paint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.mangareader.model.MangaPage
+import com.github.chrisbanes.photoview.PhotoView
 
 /**
- * Adapter for displaying manga pages in RecyclerView
+ * Adapter for displaying manga pages with zoom support
  */
 class MangaPageAdapter(
     private val pages: List<MangaPage>
@@ -22,7 +22,7 @@ class MangaPageAdapter(
     private var highlightedBubble = -1
 
     class PageViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val imageView: ImageView = view.findViewById(R.id.mangaPageImage)
+        val photoView: PhotoView = view.findViewById(R.id.mangaPageImage)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
@@ -49,6 +49,11 @@ class MangaPageAdapter(
         }
         
         if (bitmap != null) {
+            // Set zoom limits for webtoon viewing
+            holder.photoView.maximumScale = 5.0f
+            holder.photoView.mediumScale = 2.5f
+            holder.photoView.minimumScale = 1.0f
+            
             // If this page and bubble are highlighted, draw overlay
             if (position == highlightedPage && highlightedBubble >= 0 && highlightedBubble < page.speechBubbles.size) {
                 val mutableBitmap = bitmap.copy(bitmap.config, true)
@@ -67,9 +72,9 @@ class MangaPageAdapter(
                 paint.color = Color.YELLOW
                 canvas.drawRect(bubble.boundingBox, paint)
                 
-                holder.imageView.setImageBitmap(mutableBitmap)
+                holder.photoView.setImageBitmap(mutableBitmap)
             } else {
-                holder.imageView.setImageBitmap(bitmap)
+                holder.photoView.setImageBitmap(bitmap)
             }
         }
     }

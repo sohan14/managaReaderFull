@@ -51,6 +51,9 @@ dependencies {
     // Image loading
     implementation 'com.github.bumptech.glide:glide:4.16.0'
     
+    // PhotoView for zoom and pan
+    implementation 'com.github.chrisbanes:PhotoView:2.3.0'
+    
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3'
