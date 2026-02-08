@@ -38,48 +38,69 @@ class MangaAnalyzer(private val context: Context) {
      * Scale bitmap safely for webtoon images
      */
     private fun scaleBitmapSafely(bitmap: Bitmap): Bitmap {
-        // For OCR to work, we MUST keep text readable!
-        // MINIMUM width: 1000px (ensures text is large enough)
-        // We'll accept very tall images if needed for webtoons
+        // DUAL CONSTRAINTS:
+        // 1. Width must be readable for OCR (≥ 1000px)
+        // 2. Total size must fit in memory (≤ ~25M pixels = ~100MB)
         
-        val MIN_WIDTH_FOR_OCR = 1000  // Absolute minimum for readable text
-        val MAX_SAFE_DIMENSION = 4096 // Try to stay under this
+        val MIN_WIDTH_FOR_OCR = 1000
+        val MAX_PIXELS = 25_000_000  // ~100MB in memory (25M * 4 bytes)
         
         val width = bitmap.width
         val height = bitmap.height
+        val totalPixels = width.toLong() * height.toLong()
         
         DebugLogger.log(TAG, "Original image: ${width} x ${height}")
+        DebugLogger.log(TAG, "Total pixels: ${totalPixels} (${totalPixels * 4 / 1_000_000}MB)")
         
-        // PRIORITY 1: Width must be at least MIN_WIDTH_FOR_OCR
-        if (width < MIN_WIDTH_FOR_OCR) {
-            // Too narrow - scale UP to minimum width
-            val scale = MIN_WIDTH_FOR_OCR.toFloat() / width
-            val newWidth = MIN_WIDTH_FOR_OCR
-            val newHeight = (height * scale).toInt()
-            
-            DebugLogger.log(TAG, "Image too narrow, scaling UP to min width")
-            DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
-            
-            return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+        // Check if image fits in memory
+        if (totalPixels <= MAX_PIXELS) {
+            // Fits in memory!
+            if (width >= MIN_WIDTH_FOR_OCR) {
+                // Perfect size - keep it!
+                DebugLogger.log(TAG, "Image size OK, no scaling needed")
+                return bitmap
+            } else {
+                // Too narrow but small enough to scale up
+                val scale = MIN_WIDTH_FOR_OCR.toFloat() / width
+                val newWidth = MIN_WIDTH_FOR_OCR
+                val newHeight = (height * scale).toInt()
+                
+                DebugLogger.log(TAG, "Image too narrow, scaling UP to min width")
+                DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
+                
+                return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+            }
         }
         
-        // PRIORITY 2: If width is good but too wide, scale down
-        if (width > MAX_SAFE_DIMENSION) {
-            val scale = MAX_SAFE_DIMENSION.toFloat() / width
-            val newWidth = MAX_SAFE_DIMENSION
-            val newHeight = (height * scale).toInt()
+        // Image too large - must scale down
+        // Calculate scale to fit in MAX_PIXELS while keeping width as large as possible
+        val scale = kotlin.math.sqrt(MAX_PIXELS.toFloat() / totalPixels)
+        var newWidth = (width * scale).toInt()
+        var newHeight = (height * scale).toInt()
+        
+        // Ensure width doesn't drop below minimum
+        if (newWidth < MIN_WIDTH_FOR_OCR) {
+            // Force minimum width, accept slightly more pixels
+            val widthScale = MIN_WIDTH_FOR_OCR.toFloat() / width
+            newWidth = MIN_WIDTH_FOR_OCR
+            newHeight = (height * widthScale).toInt()
             
-            DebugLogger.log(TAG, "Image too wide, scaling DOWN")
+            val newPixels = newWidth.toLong() * newHeight.toLong()
+            DebugLogger.log(TAG, "Image too large, scaling DOWN but keeping min width")
             DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
+            DebugLogger.log(TAG, "New pixels: ${newPixels} (${newPixels * 4 / 1_000_000}MB)")
             
-            return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+            if (newPixels > MAX_PIXELS * 1.5) {
+                // Still too big even with min width - this is a problem
+                DebugLogger.log(TAG, "WARNING: Image still large, may run out of memory!")
+            }
+        } else {
+            DebugLogger.log(TAG, "Image too large, scaling DOWN to fit memory")
+            DebugLogger.log(TAG, "Scaled image: ${newWidth} x ${newHeight}")
+            DebugLogger.log(TAG, "New pixels: ${newWidth.toLong() * newHeight.toLong()} (${newWidth.toLong() * newHeight.toLong() * 4 / 1_000_000}MB)")
         }
         
-        // Width is perfect! Keep it as-is, even if height is huge
-        DebugLogger.log(TAG, "Image width OK (${width}px), keeping as-is")
-        DebugLogger.log(TAG, "Height: ${height}px (may exceed limit but that's OK for webtoons)")
-        
-        return bitmap
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
 
     /**
