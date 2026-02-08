@@ -192,11 +192,16 @@ class MangaAnalyzer(private val context: Context) {
             }
             DebugLogger.log(TAG, "  ✅ Filter 2: Big enough")
             
-            // FILTER 3: Aspect ratio check (speech bubbles are usually wider than tall)
+            // FILTER 3: Aspect ratio check
+            // For WEBTOONS: allow very tall blocks (0.1 to 10)
+            // For NORMAL: standard range (0.3 to 10)
             val aspectRatio = box.width().toFloat() / box.height()
+            val minAspectRatio = if (isWebtoon) 0.1f else 0.3f  // Webtoons can have tall vertical panels
+            val maxAspectRatio = 10f
+            
             DebugLogger.log(TAG, "  Aspect ratio: ${String.format("%.2f", aspectRatio)}")
-            if (aspectRatio > 10 || aspectRatio < 0.3) {
-                DebugLogger.log(TAG, "  ❌ REJECTED: Bad aspect ratio (${String.format("%.2f", aspectRatio)})")
+            if (aspectRatio > maxAspectRatio || aspectRatio < minAspectRatio) {
+                DebugLogger.log(TAG, "  ❌ REJECTED: Bad aspect ratio (${String.format("%.2f", aspectRatio)}) outside ${String.format("%.1f", minAspectRatio)}-${maxAspectRatio}")
                 return@filterIndexed false
             }
             DebugLogger.log(TAG, "  ✅ Filter 3: Good aspect ratio")
