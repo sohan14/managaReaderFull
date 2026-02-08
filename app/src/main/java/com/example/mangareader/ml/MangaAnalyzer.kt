@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.util.Log
 import com.example.mangareader.model.*
+import com.example.mangareader.utils.DebugLogger
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -28,6 +29,10 @@ class MangaAnalyzer(private val context: Context) {
         .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
         .build()
     private val faceDetector = FaceDetection.getClient(faceDetectorOptions)
+    
+    init {
+        DebugLogger.init(context)
+    }
 
     /**
      * Scale bitmap safely for webtoon images
@@ -50,14 +55,14 @@ class MangaAnalyzer(private val context: Context) {
         val safeBitmap = scaleBitmapSafely(bitmap)
         val image = InputImage.fromBitmap(safeBitmap, 0)
         
-        Log.d(TAG, "=== OCR Analysis Start ===")
-        Log.d(TAG, "Image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
+        DebugLogger.log(TAG, "=== OCR Analysis Start ===")
+        DebugLogger.log(TAG, "Image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
         
         val textResult = textRecognizer.process(image).await()
         val faces = faceDetector.process(image).await()
         
-        Log.d(TAG, "OCR found ${textResult.textBlocks.size} text blocks")
-        Log.d(TAG, "Face detection found ${faces.size} faces")
+        DebugLogger.log(TAG, "OCR found ${textResult.textBlocks.size} text blocks")
+        DebugLogger.log(TAG, "Face detection found ${faces.size} faces")
         
         // First pass: collect all text blocks
         val rawBlocks = mutableListOf<Pair<Rect, String>>()
@@ -65,17 +70,17 @@ class MangaAnalyzer(private val context: Context) {
             val boundingBox = block.boundingBox ?: return@forEachIndexed
             val text = block.text
             rawBlocks.add(Pair(boundingBox, text))
-            Log.d(TAG, "Block $index: '${text.take(20)}...' size=${boundingBox.width()}x${boundingBox.height()} area=${boundingBox.width() * boundingBox.height()}")
+            DebugLogger.log(TAG, "Block $index: '${text.take(20)}...' size=${boundingBox.width()}x${boundingBox.height()} area=${boundingBox.width() * boundingBox.height()}")
         }
         
         // Filter and merge blocks to form speech bubbles
         val speechBubbles = filterAndMergeBubbles(rawBlocks, safeBitmap, faces)
         
-        Log.d(TAG, "Final result: ${speechBubbles.size} speech bubbles detected")
+        DebugLogger.log(TAG, "Final result: ${speechBubbles.size} speech bubbles detected")
         speechBubbles.forEachIndexed { index, bubble ->
-            Log.d(TAG, "Bubble $index: '${bubble.text.take(30)}...' emotion=${bubble.emotion} gender=${bubble.characterGender}")
+            DebugLogger.log(TAG, "Bubble $index: '${bubble.text.take(30)}...' emotion=${bubble.emotion} gender=${bubble.characterGender}")
         }
-        Log.d(TAG, "=== OCR Analysis End ===")
+        DebugLogger.log(TAG, "=== OCR Analysis End ===")
         
         return speechBubbles.sortedBy { it.readingOrder }
     }
@@ -92,56 +97,56 @@ class MangaAnalyzer(private val context: Context) {
         val bubbles = mutableListOf<SpeechBubble>()
         val imageArea = bitmap.width * bitmap.height
         
-        Log.d(TAG, "--- Filtering ${blocks.size} text blocks ---")
-        Log.d(TAG, "Image area: $imageArea pixels")
+        DebugLogger.log(TAG, "--- Filtering ${blocks.size} text blocks ---")
+        DebugLogger.log(TAG, "Image area: $imageArea pixels")
         
         // Filter blocks by characteristics of speech bubbles
         val filteredBlocks = blocks.filterIndexed { index, (box, text) ->
             val area = box.width() * box.height()
             val areaRatio = area.toFloat() / imageArea
             
-            Log.d(TAG, "Block $index: text='${text.take(15)}...'")
-            Log.d(TAG, "  Size: ${box.width()}x${box.height()} = $area pixels")
-            Log.d(TAG, "  Area ratio: ${String.format("%.4f", areaRatio * 100)}%")
+            DebugLogger.log(TAG, "Block $index: text='${text.take(15)}...'")
+            DebugLogger.log(TAG, "  Size: ${box.width()}x${box.height()} = $area pixels")
+            DebugLogger.log(TAG, "  Area ratio: ${String.format("%.4f", areaRatio * 100)}%")
             
             // FILTER 1: Must be dialogue (has letters)
             if (!isLikelyDialogue(text)) {
-                Log.d(TAG, "  ❌ REJECTED: Not dialogue (no letters)")
+                DebugLogger.log(TAG, "  ❌ REJECTED: Not dialogue (no letters)")
                 return@filterIndexed false
             }
-            Log.d(TAG, "  ✅ Filter 1: Is dialogue")
+            DebugLogger.log(TAG, "  ✅ Filter 1: Is dialogue")
             
             // FILTER 2: Must be big enough
             // LOWERED for webtoons! Speech bubbles in tall images are smaller %
             // Min 0.01% = about 2000 pixels (45x45) for scaled image
             if (areaRatio < 0.0001f) {
-                Log.d(TAG, "  ❌ REJECTED: Too small (${String.format("%.4f", areaRatio * 100)}% < 0.01%)")
+                DebugLogger.log(TAG, "  ❌ REJECTED: Too small (${String.format("%.4f", areaRatio * 100)}% < 0.01%)")
                 return@filterIndexed false
             }
-            Log.d(TAG, "  ✅ Filter 2: Big enough")
+            DebugLogger.log(TAG, "  ✅ Filter 2: Big enough")
             
             // FILTER 3: Aspect ratio check (speech bubbles are usually wider than tall)
             val aspectRatio = box.width().toFloat() / box.height()
-            Log.d(TAG, "  Aspect ratio: ${String.format("%.2f", aspectRatio)}")
+            DebugLogger.log(TAG, "  Aspect ratio: ${String.format("%.2f", aspectRatio)}")
             if (aspectRatio > 10 || aspectRatio < 0.3) {
-                Log.d(TAG, "  ❌ REJECTED: Bad aspect ratio (${String.format("%.2f", aspectRatio)})")
+                DebugLogger.log(TAG, "  ❌ REJECTED: Bad aspect ratio (${String.format("%.2f", aspectRatio)})")
                 return@filterIndexed false
             }
-            Log.d(TAG, "  ✅ Filter 3: Good aspect ratio")
+            DebugLogger.log(TAG, "  ✅ Filter 3: Good aspect ratio")
             
             // FILTER 4: Position check (speech bubbles usually in upper 2/3 of image for webtoons)
             // Allow all for now, but can filter if needed
             
-            Log.d(TAG, "  ✅✅✅ ACCEPTED as speech bubble!")
+            DebugLogger.log(TAG, "  ✅✅✅ ACCEPTED as speech bubble!")
             true
         }
         
-        Log.d(TAG, "After filtering: ${filteredBlocks.size} blocks passed")
+        DebugLogger.log(TAG, "After filtering: ${filteredBlocks.size} blocks passed")
         
         // Group nearby blocks into single bubbles (for multi-line bubbles)
         val grouped = groupNearbyBlocks(filteredBlocks)
         
-        Log.d(TAG, "After grouping: ${grouped.size} bubble groups")
+        DebugLogger.log(TAG, "After grouping: ${grouped.size} bubble groups")
         
         // Convert groups to SpeechBubbles
         grouped.forEachIndexed { index, group ->
@@ -157,7 +162,7 @@ class MangaAnalyzer(private val context: Context) {
             
             val emotion = detectEmotion(mergedText)
             
-            Log.d(TAG, "Bubble group $index: '${mergedText.take(20)}...' gender=$gender emotion=$emotion")
+            DebugLogger.log(TAG, "Bubble group $index: '${mergedText.take(20)}...' gender=$gender emotion=$emotion")
             
             bubbles.add(
                 SpeechBubble(

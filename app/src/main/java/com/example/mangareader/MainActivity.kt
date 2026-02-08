@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.mangareader.utils.CrashLogger
+import com.example.mangareader.utils.DebugLogger
 import com.example.mangareader.utils.PDFProcessor
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textview.MaterialTextView
@@ -75,6 +76,9 @@ class MainActivity : AppCompatActivity() {
         
         // Initialize crash logger
         CrashLogger.getInstance(this)
+        
+        // Initialize debug logger
+        DebugLogger.init(this)
         
         try {
             setContentView(R.layout.activity_main)
@@ -230,7 +234,8 @@ class MainActivity : AppCompatActivity() {
      * Create options menu with debug crash logs option
      */
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menu?.add(0, 1, 0, "🐛 Debug Logs")
+        menu?.add(0, 1, 0, "📊 OCR Debug Logs")
+        menu?.add(0, 2, 1, "🐛 Crash Logs")
         return true
     }
     
@@ -240,11 +245,38 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             1 -> {
+                showOCRLogsDialog()
+                true
+            }
+            2 -> {
                 showCrashLogsDialog()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+    
+    /**
+     * Show OCR debug logs dialog
+     */
+    private fun showOCRLogsDialog() {
+        val logs = DebugLogger.getAllLogs()
+        
+        AlertDialog.Builder(this)
+            .setTitle("📊 OCR Debug Logs")
+            .setMessage(logs)
+            .setPositiveButton("📋 Copy to Clipboard") { _, _ ->
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("OCR Logs", logs)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(this, "OCR logs copied! Send them to me!", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("🗑️ Clear Logs") { _, _ ->
+                DebugLogger.clearLogs()
+                Toast.makeText(this, "OCR logs cleared", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("Close", null)
+            .show()
     }
     
     /**
