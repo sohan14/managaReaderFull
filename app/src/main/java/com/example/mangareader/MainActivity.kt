@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity() {
             selectedImages.addAll(uris)
             selectedPDF = null
             pdfImagePaths = null
-            statusText.text = "${selectedImages.size} image(s) selected"
+            statusText.text = "✅ ${selectedImages.size} page(s) selected\n📖 Tap 'Start Reading' to begin!"
             startButton.isEnabled = true
         }
     }

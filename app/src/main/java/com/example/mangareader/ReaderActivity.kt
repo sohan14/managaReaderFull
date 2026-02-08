@@ -143,7 +143,7 @@ class ReaderActivity : AppCompatActivity() {
 
     private fun initManagers() {
         ttsManager = TTSManager(this)
-        mangaAnalyzer = MangaAnalyzer()
+        mangaAnalyzer = MangaAnalyzer(this)
     }
 
     /**
@@ -180,9 +180,15 @@ class ReaderActivity : AppCompatActivity() {
                         }
                         
                         if (bitmap != null) {
-                            // Analyze page
-                            val mangaPage = mangaAnalyzer.analyzePage(bitmap, index)
-                                .copy(imagePath = path)
+                            // Analyze page for speech bubbles
+                            val speechBubbles = mangaAnalyzer.analyzePage(bitmap)
+                            
+                            val mangaPage = MangaPage(
+                                pageNumber = index,
+                                imagePath = path,
+                                speechBubbles = speechBubbles,
+                                isProcessed = true
+                            )
                             
                             withContext(Dispatchers.Main) {
                                 mangaPages.add(mangaPage)

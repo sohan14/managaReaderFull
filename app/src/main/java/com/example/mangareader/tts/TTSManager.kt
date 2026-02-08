@@ -14,18 +14,20 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.*
 import kotlin.coroutines.resume
 
-/**
- * Text-to-Speech manager with multiple gender-specific voices
- */
 class TTSManager(context: Context) {
 
     private var tts: TextToSpeech? = null
     private var isInitialized = false
     private var currentUtteranceId = 0
     
-    private var maleVoice: Voice? = null
-    private var femaleVoice: Voice? = null
+    // MULTIPLE VOICE SUPPORT
+    private var selectedMaleVoice: Voice? = null
+    private var selectedFemaleVoice: Voice? = null
     private var availableVoices: Set<Voice> = emptySet()
+    
+    // Lists of available voices by gender
+    var maleVoices: List<Voice> = emptyList()
+    var femaleVoices: List<Voice> = emptyList()
 
     init {
         tts = TextToSpeech(context) { status ->
@@ -33,9 +35,8 @@ class TTSManager(context: Context) {
                 tts?.language = Locale.US
                 tts?.setSpeechRate(0.9f)
                 
-                // Discover and assign different voices for male/female
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    discoverVoices()
+                    discoverAllVoices()
                 }
                 
                 isInitialized = true
@@ -44,54 +45,80 @@ class TTSManager(context: Context) {
     }
     
     /**
-     * Discover available TTS voices and assign best options for male/female
+     * Discover ALL available TTS voices on device
      */
-    private fun discoverVoices() {
+    private fun discoverAllVoices() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             availableVoices = tts?.voices ?: emptySet()
             
-            Log.d("TTSManager", "Available voices: ${availableVoices.size}")
+            Log.d("TTSManager", "Found ${availableVoices.size} total voices")
             
-            // Find male voice - prefer names with "male" and lower pitch
-            maleVoice = availableVoices.firstOrNull { voice ->
-                voice.name.contains("male", ignoreCase = true) && 
-                !voice.name.contains("female", ignoreCase = true)
-            } ?: availableVoices.firstOrNull { voice ->
-                // Fallback: Look for deeper/masculine sounding voice names
-                voice.name.contains("deep", ignoreCase = true) ||
-                voice.name.contains("bass", ignoreCase = true) ||
-                voice.name.contains("en-us-x-", ignoreCase = true) && 
-                voice.name.last().isDigit() && voice.name.last().digitToInt() % 2 == 0
+            // Categorize voices by gender
+            val males = mutableListOf<Voice>()
+            val females = mutableListOf<Voice>()
+            
+            availableVoices.forEach { voice ->
+                val name = voice.name.lowercase()
+                
+                // Classify as female if contains female indicators
+                val isFemale = name.contains("female") || 
+                               name.contains("woman") ||
+                               name.contains("girl") ||
+                               (name.contains("en-us") && name.last().isDigit() && name.last().digitToInt() % 2 == 1)
+                
+                // Classify as male if contains male indicators
+                val isMale = name.contains("male") && !name.contains("female") ||
+                            name.contains("man") && !name.contains("woman") ||
+                            name.contains("boy") ||
+                            (name.contains("en-us") && name.last().isDigit() && name.last().digitToInt() % 2 == 0)
+                
+                when {
+                    isFemale -> females.add(voice)
+                    isMale -> males.add(voice)
+                    else -> {
+                        // Try to guess from voice features
+                        // Higher quality voices are usually better
+                        if (voice.quality >= Voice.QUALITY_HIGH) {
+                            females.add(voice) // Default unclear voices to female for user preference
+                        }
+                    }
+                }
             }
             
-            // Find female voice - prefer names with "female" or higher pitch indicators
-            femaleVoice = availableVoices.firstOrNull { voice ->
-                voice.name.contains("female", ignoreCase = true)
-            } ?: availableVoices.firstOrNull { voice ->
-                // Fallback: Look for softer/feminine sounding voice names
-                voice.name.contains("high", ignoreCase = true) ||
-                voice.name.contains("soprano", ignoreCase = true) ||
-                voice.name.contains("en-us-x-", ignoreCase = true) && 
-                voice.name.last().isDigit() && voice.name.last().digitToInt() % 2 == 1
-            }
+            maleVoices = males
+            femaleVoices = females
             
-            // If we found different voices, log them
-            if (maleVoice != null) {
-                Log.d("TTSManager", "Male voice: ${maleVoice?.name}")
-            }
-            if (femaleVoice != null) {
-                Log.d("TTSManager", "Female voice: ${femaleVoice?.name}")
-            }
+            // Auto-select best voices
+            selectedMaleVoice = males.firstOrNull()
+            selectedFemaleVoice = females.firstOrNull()
             
-            // If we didn't find distinct voices, we'll use pitch adjustment instead
-            if (maleVoice == null || femaleVoice == null || maleVoice == femaleVoice) {
-                Log.d("TTSManager", "Using pitch adjustment fallback (voices not distinct)")
-            }
+            Log.d("TTSManager", "Found ${femaleVoices.size} female voices, ${maleVoices.size} male voices")
         }
+    }
+    
+    /**
+     * Set selected voice for gender
+     */
+    fun setVoice For(gender: Gender, voice: Voice) {
+        when (gender) {
+            Gender.MALE -> selectedMaleVoice = voice
+            Gender.FEMALE -> selectedFemaleVoice = voice
+            else -> {}
+        }
+    }
+    
+    /**
+     * Get voice name for display
+     */
+    fun getVoiceName(voice: Voice): String {
+        return voice.name.replace("en-us-x-", "Voice ")
+                         .replace("en_US", "US English")
+                         .replace("_", " ")
+                         .replaceFirstChar { it.uppercase() }
     }
 
     /**
-     * Speak a speech bubble with appropriate voice and emotion
+     * Speak with IMPROVED EMOTION VARIATION
      */
     suspend fun speak(speechBubble: SpeechBubble): Boolean = suspendCancellableCoroutine { continuation ->
         if (!isInitialized) {
@@ -101,43 +128,27 @@ class TTSManager(context: Context) {
 
         val utteranceId = "utterance_${currentUtteranceId++}"
         
-        // Try to use actual different voices (Android 5.0+)
+        // Select voice based on gender
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            when (speechBubble.characterGender) {
-                Gender.MALE -> {
-                    if (maleVoice != null) {
-                        tts?.voice = maleVoice
-                    }
-                    tts?.setPitch(0.85f)  // Lower for male
-                }
-                Gender.FEMALE -> {
-                    if (femaleVoice != null) {
-                        tts?.voice = femaleVoice
-                    }
-                    tts?.setPitch(1.15f)  // Higher for female
-                }
-                Gender.UNKNOWN -> {
-                    tts?.voice = tts?.defaultVoice
-                    tts?.setPitch(1.0f)
-                }
+            val targetVoice = when (speechBubble.characterGender) {
+                Gender.MALE -> selectedMaleVoice
+                Gender.FEMALE -> selectedFemaleVoice
+                Gender.UNKNOWN -> tts?.defaultVoice
+            }
+            
+            if (targetVoice != null) {
+                tts?.voice = targetVoice
             }
         }
         
-        // Adjust speech rate based on emotion
-        val emotionRate = when (speechBubble.emotion) {
-            Emotion.HAPPY -> 1.0f      // Normal to fast
-            Emotion.SAD -> 0.75f       // Slower, melancholic
-            Emotion.ANGRY -> 1.1f      // Faster, more intense
-            Emotion.SURPRISED -> 1.05f // Slightly faster
-            Emotion.SCARED -> 1.15f    // Faster, urgent
-            Emotion.NEUTRAL -> 0.9f    // Default rate
-        }
-        tts?.setSpeechRate(emotionRate)
+        // IMPROVED EMOTION MODULATION
+        val (pitch, speed) = getEmotionModulation(speechBubble.emotion, speechBubble.characterGender)
+        
+        tts?.setPitch(pitch)
+        tts?.setSpeechRate(speed)
 
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {
-                // Speech started
-            }
+            override fun onStart(utteranceId: String?) {}
 
             override fun onDone(utteranceId: String?) {
                 // Reset to defaults
@@ -151,14 +162,13 @@ class TTSManager(context: Context) {
             }
         })
 
-        // Clean up text for better TTS
-        val cleanText = cleanTextForTTS(speechBubble.text)
+        // Clean and enhance text for better speech
+        val enhancedText = enhanceTextForSpeech(speechBubble.text, speechBubble.emotion)
         
-        // Use simple params Bundle
         val params = Bundle()
         params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
         
-        tts?.speak(cleanText, TextToSpeech.QUEUE_ADD, params, utteranceId)
+        tts?.speak(enhancedText, TextToSpeech.QUEUE_ADD, params, utteranceId)
         
         continuation.invokeOnCancellation {
             tts?.stop()
@@ -166,60 +176,88 @@ class TTSManager(context: Context) {
     }
     
     /**
-     * Get information about available voices
+     * IMPROVED emotion-based pitch and speed
+     */
+    private fun getEmotionModulation(emotion: Emotion, gender: Gender): Pair<Float, Float> {
+        // Base pitch varies by gender
+        val basePitch = when (gender) {
+            Gender.MALE -> 0.9f
+            Gender.FEMALE -> 1.1f
+            Gender.UNKNOWN -> 1.0f
+        }
+        
+        // Emotion modifies both pitch and speed MORE dramatically
+        return when (emotion) {
+            Emotion.HAPPY -> Pair(basePitch + 0.3f, 1.15f)      // Higher, faster, cheerful
+            Emotion.SAD -> Pair(basePitch - 0.25f, 0.7f)        // Lower, slower, melancholic
+            Emotion.ANGRY -> Pair(basePitch + 0.1f, 1.25f)      // Slightly higher, fast, intense
+            Emotion.SURPRISED -> Pair(basePitch + 0.35f, 1.2f)  // Much higher, fast, shocked
+            Emotion.SCARED -> Pair(basePitch + 0.4f, 1.3f)      // Highest, fastest, panicked
+            Emotion.NEUTRAL -> Pair(basePitch, 0.95f)           // Normal pace
+        }
+    }
+    
+    /**
+     * Enhance text with pauses and emphasis
+     */
+    private fun enhanceTextForSpeech(text: String, emotion: Emotion): String {
+        var enhanced = text
+        
+        // Add pauses for ellipsis
+        enhanced = enhanced.replace("...", " ... ")
+        
+        // Add emphasis for multiple exclamations
+        if (text.count { it == '!' } >= 2) {
+            enhanced = enhanced.replace("!!", "!  ")
+        }
+        
+        // Add pause before questions for better inflection
+        if (text.contains("?")) {
+            enhanced = enhanced.replace("?", " ?")
+        }
+        
+        // For scared emotion, add slight stutter effect
+        if (emotion == Emotion.SCARED && enhanced.length > 10) {
+            val words = enhanced.split(" ")
+            if (words.isNotEmpty()) {
+                val firstWord = words[0]
+                enhanced = "$firstWord... $enhanced"
+            }
+        }
+        
+        return enhanced.trim()
+    }
+
+    /**
+     * Get info about available voices
      */
     fun getVoiceInfo(): String {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             """
-            Available voices: ${availableVoices.size}
-            Male voice: ${maleVoice?.name ?: "Using pitch adjustment"}
-            Female voice: ${femaleVoice?.name ?: "Using pitch adjustment"}
+            Total voices: ${availableVoices.size}
+            Female voices: ${femaleVoices.size}
+            Male voices: ${maleVoices.size}
+            
+            Selected female: ${selectedFemaleVoice?.let { getVoiceName(it) } ?: "Default"}
+            Selected male: ${selectedMaleVoice?.let { getVoiceName(it) } ?: "Default"}
             """.trimIndent()
         } else {
-            "Using pitch adjustment (Android 5.0+ required for multiple voices)"
+            "Voice selection requires Android 5.0+"
         }
     }
 
-    /**
-     * Clean text for better text-to-speech output
-     */
-    private fun cleanTextForTTS(text: String): String {
-        var cleaned = text
-            .replace("...", " pause ")  // Handle ellipsis
-            .replace("!!", "!")  // Normalize multiple exclamation marks
-            .replace("??", "?")  // Normalize multiple question marks
-            .replace(Regex("[*_~]"), "")  // Remove emphasis markers
-        
-        // Handle manga-specific text patterns
-        cleaned = cleaned.replace(Regex("\\s+"), " ").trim()
-        
-        return cleaned
-    }
-
-    /**
-     * Stop current speech
-     */
     fun stop() {
         tts?.stop()
     }
 
-    /**
-     * Check if TTS is currently speaking
-     */
     fun isSpeaking(): Boolean {
         return tts?.isSpeaking ?: false
     }
 
-    /**
-     * Set speech rate
-     */
     fun setSpeechRate(rate: Float) {
         tts?.setSpeechRate(rate)
     }
 
-    /**
-     * Clean up resources
-     */
     fun shutdown() {
         tts?.stop()
         tts?.shutdown()

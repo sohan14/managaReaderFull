@@ -37,7 +37,7 @@ class PDFProcessor(private val context: Context) {
             
             // Open PDF with PdfRenderer
             val fileDescriptor = ParcelFileDescriptor.open(
-                pdfFile, 
+                pdfFile,
                 ParcelFileDescriptor.MODE_READ_ONLY
             )
             
