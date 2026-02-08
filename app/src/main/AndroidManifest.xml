@@ -11,7 +11,7 @@
         android:allowBackup="true"
         android:label="Manga Voice Reader"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light">
+        android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
         
         <activity
             android:name=".MainActivity"
