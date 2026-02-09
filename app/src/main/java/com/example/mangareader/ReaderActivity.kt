@@ -367,6 +367,7 @@ class ReaderActivity : AppCompatActivity() {
                                                 bubble.boundingBox.right,
                                                 bubble.boundingBox.bottom + chunkOffsetY
                                             ),
+                                            confidence = bubble.confidence,
                                             characterGender = bubble.characterGender,
                                             emotion = bubble.emotion
                                         )
