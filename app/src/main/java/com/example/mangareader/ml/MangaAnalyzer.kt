@@ -196,8 +196,9 @@ class MangaAnalyzer(private val context: Context) {
         
         val panelBoundaries = detectPanelBoundaries(bitmap)
         
-        // Group panels into chunks (max ~15000px per chunk for memory safety)
-        val maxChunkHeight = 15000
+        // Group panels into chunks (max ~7000px per chunk for readability)
+        // Smaller chunks = fewer panels per scene = bigger panels = easier to read!
+        val maxChunkHeight = 7000
         var chunkStart = 0
         
         for (i in 1 until panelBoundaries.size) {
