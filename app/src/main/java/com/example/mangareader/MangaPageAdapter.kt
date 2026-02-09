@@ -139,54 +139,31 @@ class MangaPageAdapter(
     }
     
     /**
-     * Auto-pan PhotoView to show current bubble being read
-     * IMPROVED: Waits for ViewHolder to be available
+     * Scroll RecyclerView to show bubble position for continuous webtoon
      */
-    fun panToBubble(pageIndex: Int, bubbleIndex: Int, recyclerView: androidx.recyclerview.widget.RecyclerView) {
-        // Try multiple times to get ViewHolder (it might not be ready immediately after scroll)
-        var attempts = 0
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    fun scrollToBubble(pageIndex: Int, bubbleIndex: Int, recyclerView: androidx.recyclerview.widget.RecyclerView) {
+        val page = pages.getOrNull(pageIndex) ?: return
+        val bubble = page.speechBubbles.getOrNull(bubbleIndex) ?: return
         
-        fun tryPan() {
+        // Get layout manager
+        val layoutManager = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager ?: return
+        
+        // Scroll to the page first
+        layoutManager.scrollToPositionWithOffset(pageIndex, 0)
+        
+        // Then try to scroll to show the bubble
+        // Since it's a full webtoon, we need to calculate the pixel offset
+        recyclerView.post {
             val viewHolder = recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
-            
             if (viewHolder != null) {
-                val page = pages[pageIndex]
-                if (bubbleIndex < page.speechBubbles.size) {
-                    val bubble = page.speechBubbles[bubbleIndex]
-                    val bubbleRect = bubble.boundingBox
-                    
-                    val photoView = viewHolder.photoView
-                    
-                    // Ensure PhotoView is laid out
-                    photoView.post {
-                        val viewHeight = photoView.height.toFloat()
-                        val imageHeight = photoView.drawable?.intrinsicHeight?.toFloat() ?: 0f
-                        
-                        if (viewHeight > 0 && imageHeight > 0) {
-                            // Calculate bubble position in the image
-                            val bubbleCenterY = bubbleRect.centerY().toFloat()
-                            
-                            // Calculate scale to fit image to screen width
-                            val scale = photoView.width.toFloat() / photoView.drawable.intrinsicWidth.toFloat()
-                            
-                            // Pan to show bubble - using setScale with animate=true
-                            photoView.setScale(
-                                scale,  // Fit to width
-                                bubbleRect.centerX().toFloat(),  // X position (bubble center X)
-                                bubbleCenterY,  // Y position (bubble center Y) 
-                                true  // Animate smoothly
-                            )
-                        }
-                    }
-                }
-            } else if (attempts < 5) {
-                // ViewHolder not ready yet, try again in 100ms
-                attempts++
-                handler.postDelayed({ tryPan() }, 100)
+                // Calculate bubble position in the full image
+                val bubbleY = bubble.boundingBox.centerY()
+                val screenHeight = recyclerView.height
+                
+                // Scroll to center bubble on screen
+                val scrollOffset = bubbleY - (screenHeight / 2)
+                layoutManager.scrollToPositionWithOffset(pageIndex, -scrollOffset.toInt())
             }
         }
-        
-        tryPan()
     }
 }

@@ -103,16 +103,13 @@ class ReaderActivity : AppCompatActivity() {
         val scrollSpeedSeekBar = findViewById<SeekBar>(R.id.scrollSpeedSeekBar)
         val scrollSpeedLabel = findViewById<TextView>(R.id.scrollSpeedLabel)
         
-        // Setup RecyclerView for VERTICAL webtoon scrolling
+        // Setup RecyclerView for VERTICAL continuous webtoon scrolling
         val layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
         recyclerView.layoutManager = layoutManager
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
-        // CRITICAL: Add PagerSnapHelper to snap to one full screen at a time!
-        // This ensures only ONE chunk visible, not multiple
-        val snapHelper = androidx.recyclerview.widget.PagerSnapHelper()
-        snapHelper.attachToRecyclerView(recyclerView)
+        // NO snap helper - allow smooth continuous scrolling through full webtoon
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -471,19 +468,12 @@ class ReaderActivity : AppCompatActivity() {
                     // Highlight current bubble on the page
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
                     
-                    // CRITICAL FIX: Two-step scroll
-                    // Step 1: Scroll RecyclerView to correct PAGE (chunk)
-                    recyclerView.smoothScrollToPosition(currentPageIndex)
+                    // Auto-scroll to bubble (simple since full webtoon in one page)
+                    adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
                     
-                    // Step 2: Wait for scroll to complete, then pan to bubble
-                    kotlinx.coroutines.delay(400)  // Wait for page scroll
-                    
-                    // Step 3: Pan PhotoView to show bubble within the page
-                    adapter.panToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
-                    
-                    // Step 4: Wait for pan animation
-                    val panDelay = (200 / scrollSpeedMultiplier).toLong().coerceIn(100, 500)
-                    kotlinx.coroutines.delay(panDelay)
+                    // Brief delay for scroll animation
+                    val scrollDelay = (300 / scrollSpeedMultiplier).toLong().coerceIn(100, 800)
+                    kotlinx.coroutines.delay(scrollDelay)
                     
                     // Speak the text
                     val success = ttsManager.speak(bubble)

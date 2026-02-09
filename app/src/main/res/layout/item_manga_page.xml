@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Each page fills entire screen - ONE screen per swipe -->
+<!-- Continuous webtoon scrolling - wrap_content allows natural flow -->
 <com.github.chrisbanes.photoview.PhotoView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/mangaPageImage"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:scaleType="fitCenter"
+    android:layout_height="wrap_content"
+    android:adjustViewBounds="true"
+    android:scaleType="fitStart"
     android:background="#000000" />
 

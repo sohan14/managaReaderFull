@@ -117,49 +117,17 @@ class MangaAnalyzer(private val context: Context) {
      * Split very tall images (webtoons) into manageable chunks for better OCR
      */
     /**
-     * Split tall webtoon into screen-sized chunks for perfect viewing
-     * Each chunk = one screen height = one swipeable page
+     * DON'T split webtoons - keep them whole for story continuity!
+     * Users can scroll naturally through the full webtoon
      */
     private fun splitIntoChunks(bitmap: Bitmap, screenHeight: Int): List<Bitmap> {
         val chunks = mutableListOf<Bitmap>()
         
-        // If image is not super tall, return as-is
-        val aspectRatio = bitmap.height.toFloat() / bitmap.width
-        if (aspectRatio <= 2.0f) {
-            // Normal image - process whole thing
-            DebugLogger.log(TAG, "Image aspect ratio ${String.format("%.1f", aspectRatio)} - processing as single image")
-            chunks.add(bitmap)
-            return chunks
-        }
-        
-        // Very tall webtoon - split into SCREEN-HEIGHT chunks!
-        DebugLogger.log(TAG, "Very tall webtoon detected (aspect ${String.format("%.1f", aspectRatio)})")
-        DebugLogger.log(TAG, "Splitting into screen-height chunks for perfect viewing...")
-        
-        // Use screen height as chunk height for 1:1 screen mapping
-        val chunkHeight = if (screenHeight > 0) {
-            screenHeight
-        } else {
-            // Fallback if screen height not available
-            bitmap.width * 2  // Conservative estimate
-        }
-        
-        val numChunks = (bitmap.height + chunkHeight - 1) / chunkHeight
-        
-        DebugLogger.log(TAG, "Screen height: ${screenHeight}px")
-        DebugLogger.log(TAG, "Splitting ${bitmap.height}px tall image into $numChunks chunks of ~${chunkHeight}px each")
-        DebugLogger.log(TAG, "Result: Each chunk = one screen = one swipeable page!")
-        
-        for (i in 0 until numChunks) {
-            val startY = i * chunkHeight
-            val endY = kotlin.math.min(startY + chunkHeight, bitmap.height)
-            val actualHeight = endY - startY
-            
-            val chunk = Bitmap.createBitmap(bitmap, 0, startY, bitmap.width, actualHeight)
-            chunks.add(chunk)
-            
-            DebugLogger.log(TAG, "Chunk $i (Screen ${i+1}): ${bitmap.width} x $actualHeight (${bitmap.width * actualHeight} pixels)")
-        }
+        // ALWAYS return full image - no chunking!
+        // Chunking breaks story continuity
+        DebugLogger.log(TAG, "Processing full webtoon for continuous reading")
+        DebugLogger.log(TAG, "Image: ${bitmap.width} x ${bitmap.height}")
+        chunks.add(bitmap)
         
         return chunks
     }
