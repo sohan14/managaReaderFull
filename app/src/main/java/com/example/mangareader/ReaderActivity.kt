@@ -104,13 +104,17 @@ class ReaderActivity : AppCompatActivity() {
         val scrollSpeedSeekBar = findViewById<SeekBar>(R.id.scrollSpeedSeekBar)
         val scrollSpeedLabel = findViewById<TextView>(R.id.scrollSpeedLabel)
         
-        // Setup RecyclerView for VERTICAL continuous webtoon scrolling
+        // Setup RecyclerView for SCENE-BASED webtoon reading
+        // Each page = one scene (panel-based chunk) that fits on screen
         val layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
         recyclerView.layoutManager = layoutManager
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
-        // NO snap helper - allow smooth continuous scrolling through full webtoon
+        // Add PagerSnapHelper to snap to complete scenes/pages
+        // User swipes to next scene after reading all bubbles on current scene
+        val snapHelper = androidx.recyclerview.widget.PagerSnapHelper()
+        snapHelper.attachToRecyclerView(recyclerView)
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -329,7 +333,10 @@ class ReaderActivity : AppCompatActivity() {
                             
                             val analysisResult = mangaAnalyzer.analyzePage(bitmap, chunkHeight)
                             
-                            // Handle result - merge all chunks into ONE continuous page
+                            // SCENE-BASED READING: Keep each chunk as a separate page!
+                            // Each chunk = one scene = multiple bubbles
+                            // User reads all bubbles on scene, then moves to next scene
+                            
                             if (analysisResult.pages.size == 1) {
                                 // Normal single page
                                 val pageData = analysisResult.pages[0]
@@ -347,54 +354,31 @@ class ReaderActivity : AppCompatActivity() {
                                     adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
                             } else {
-                                // Tall webtoon - was chunked at panel boundaries for OCR
-                                // MERGE all bubbles into ONE continuous page!
-                                Log.d(TAG, "Page $index: Merging ${analysisResult.pages.size} panel chunks into single continuous page")
-                                
-                                val allBubbles = mutableListOf<SpeechBubble>()
+                                // Tall webtoon chunked into scenes at panel boundaries
+                                // Each chunk = one page to display
+                                Log.d(TAG, "Page $index: Webtoon with ${analysisResult.pages.size} scenes (panel-based chunks)")
                                 
                                 analysisResult.pages.forEachIndexed { chunkIdx, pageData ->
-                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles, originalYOffset=${pageData.originalYOffset}")
+                                    Log.d(TAG, "  Scene $chunkIdx: Found ${pageData.speechBubbles.size} bubbles")
                                     
-                                    // Calculate scaling factor from processed chunk to original chunk
-                                    val scaleX = bitmap.width.toFloat() / pageData.bitmap.width.toFloat()
-                                    val scaleY = bitmap.width.toFloat() / pageData.bitmap.width.toFloat() // Same scale to preserve aspect
-                                    
-                                    // Adjust bubble positions: scale coordinates + add original Y offset
-                                    pageData.speechBubbles.forEach { bubble ->
-                                        val adjustedBubble = SpeechBubble(
-                                            text = bubble.text,
-                                            boundingBox = android.graphics.Rect(
-                                                (bubble.boundingBox.left * scaleX).toInt(),
-                                                (bubble.boundingBox.top * scaleY).toInt() + pageData.originalYOffset,
-                                                (bubble.boundingBox.right * scaleX).toInt(),
-                                                (bubble.boundingBox.bottom * scaleY).toInt() + pageData.originalYOffset
-                                            ),
-                                            confidence = bubble.confidence,
-                                            characterGender = bubble.characterGender,
-                                            emotion = bubble.emotion
-                                        )
-                                        allBubbles.add(adjustedBubble)
-                                        Log.d(TAG, "    Bubble '${bubble.text.take(20)}...' Y: ${bubble.boundingBox.top} → ${(bubble.boundingBox.top * scaleY).toInt() + pageData.originalYOffset}")
+                                    // Save this scene's bitmap
+                                    val sceneFile = File(cacheDir, "scene_${index}_${chunkIdx}.jpg")
+                                    sceneFile.outputStream().use { out ->
+                                        pageData.bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                                     }
-                                }
-                                
-                                // Sort bubbles by Y position (top to bottom)
-                                val sortedBubbles = allBubbles.sortedBy { it.boundingBox.top }
-                                
-                                Log.d(TAG, "Page $index: Total ${sortedBubbles.size} bubbles in continuous page")
-                                
-                                // Create ONE page with original full bitmap and all bubbles
-                                val mangaPage = MangaPage(
-                                    pageNumber = mangaPages.size,
-                                    imagePath = path,  // Original full image
-                                    speechBubbles = sortedBubbles,
-                                    isProcessed = true
-                                )
-                                
-                                withContext(Dispatchers.Main) {
-                                    mangaPages.add(mangaPage)
-                                    adapter.notifyItemInserted(mangaPages.size - 1)
+                                    
+                                    // Create a page for this scene
+                                    val mangaPage = MangaPage(
+                                        pageNumber = mangaPages.size,
+                                        imagePath = sceneFile.absolutePath,
+                                        speechBubbles = pageData.speechBubbles,
+                                        isProcessed = true
+                                    )
+                                    
+                                    withContext(Dispatchers.Main) {
+                                        mangaPages.add(mangaPage)
+                                        adapter.notifyItemInserted(mangaPages.size - 1)
+                                    }
                                 }
                             }
                         }
@@ -491,15 +475,11 @@ class ReaderActivity : AppCompatActivity() {
                     statusText.text = statusMessage
                     miniStatusText.text = statusMessage  // Also update mini status
                     
-                    // Highlight current bubble on the page
+                    // Highlight current bubble on the scene
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
                     
-                    // Auto-scroll to bubble (simple since full webtoon in one page)
-                    adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
-                    
-                    // Brief delay for scroll animation
-                    val scrollDelay = (300 / scrollSpeedMultiplier).toLong().coerceIn(100, 800)
-                    kotlinx.coroutines.delay(scrollDelay)
+                    // SCENE-BASED: No need to scroll to bubble
+                    // The entire scene is visible, just highlight current bubble being read
                     
                     // Speak the text
                     val success = ttsManager.speak(bubble)
