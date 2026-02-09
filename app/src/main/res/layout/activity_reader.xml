@@ -45,6 +45,47 @@
             android:paddingEnd="16dp" />
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- Scroll Speed Control - Semi-transparent, top-right -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/scrollSpeedCard"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="8dp"
+        app:cardBackgroundColor="#4D000000"
+        app:cardElevation="2dp"
+        app:cardCornerRadius="12dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:visibility="gone"
+        android:alpha="0.7">
+        
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp">
+            
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/scrollSpeedLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Scroll: 1.0x"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:layout_gravity="center"
+                android:layout_marginBottom="4dp" />
+            
+            <SeekBar
+                android:id="@+id/scrollSpeedSeekBar"
+                android:layout_width="120dp"
+                android:layout_height="wrap_content"
+                android:max="30"
+                android:progress="10"
+                android:alpha="0.8" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
     <!-- Floating Play/Pause button - Bottom center -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/floatingPlayButton"

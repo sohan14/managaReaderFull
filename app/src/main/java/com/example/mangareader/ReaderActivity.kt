@@ -51,6 +51,7 @@ class ReaderActivity : AppCompatActivity() {
     private var currentPageIndex = 0
     private var isPlaying = false
     private var currentBubbleIndex = 0
+    private var scrollSpeedMultiplier = 1.0f  // Controls delay between bubbles
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,6 +97,11 @@ class ReaderActivity : AppCompatActivity() {
         val controlsContainer = findViewById<View>(R.id.controlsContainer)
         val closeControlsButton = findViewById<ImageView>(R.id.closeControlsButton)
         val rootLayout = findViewById<View>(R.id.rootLayout)
+        
+        // Scroll speed control
+        val scrollSpeedCard = findViewById<View>(R.id.scrollSpeedCard)
+        val scrollSpeedSeekBar = findViewById<SeekBar>(R.id.scrollSpeedSeekBar)
+        val scrollSpeedLabel = findViewById<TextView>(R.id.scrollSpeedLabel)
         
         // Setup RecyclerView for VERTICAL webtoon scrolling
         val layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
@@ -150,11 +156,15 @@ class ReaderActivity : AppCompatActivity() {
             if (controlsContainer.visibility == View.VISIBLE) {
                 controlsContainer.visibility = View.GONE
                 floatingPlayButton.visibility = View.VISIBLE
-                if (isPlaying) miniStatusCard.visibility = View.VISIBLE
+                if (isPlaying) {
+                    miniStatusCard.visibility = View.VISIBLE
+                    scrollSpeedCard.visibility = View.VISIBLE
+                }
             } else {
                 controlsContainer.visibility = View.VISIBLE
                 floatingPlayButton.visibility = View.GONE
                 miniStatusCard.visibility = View.GONE
+                scrollSpeedCard.visibility = View.GONE
             }
         }
         
@@ -162,8 +172,25 @@ class ReaderActivity : AppCompatActivity() {
         closeControlsButton.setOnClickListener {
             controlsContainer.visibility = View.GONE
             floatingPlayButton.visibility = View.VISIBLE
-            if (isPlaying) miniStatusCard.visibility = View.VISIBLE
+            if (isPlaying) {
+                miniStatusCard.visibility = View.VISIBLE
+                scrollSpeedCard.visibility = View.VISIBLE
+            }
         }
+        
+        // Scroll speed control
+        scrollSpeedSeekBar.max = 30
+        scrollSpeedSeekBar.progress = 10  // Default 1.0x
+        scrollSpeedSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // Range: 0.3x to 3.0x
+                // progress 0-30 maps to 0.3-3.0
+                scrollSpeedMultiplier = 0.3f + (progress / 10f)
+                scrollSpeedLabel.text = String.format("Scroll: %.1fx", scrollSpeedMultiplier)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
         
         // Speed control
         speedSeekBar.max = 20
@@ -377,6 +404,7 @@ class ReaderActivity : AppCompatActivity() {
         
         val floatingPlayButton = findViewById<FloatingActionButton>(R.id.floatingPlayButton)
         val miniStatusCard = findViewById<View>(R.id.miniStatusCard)
+        val scrollSpeedCard = findViewById<View>(R.id.scrollSpeedCard)
         
         if (isPlaying) {
             playPauseButton.setImageResource(android.R.drawable.ic_media_pause)
@@ -386,6 +414,7 @@ class ReaderActivity : AppCompatActivity() {
             playPauseButton.setImageResource(android.R.drawable.ic_media_play)
             floatingPlayButton.setImageResource(android.R.drawable.ic_media_play)
             miniStatusCard.visibility = View.GONE
+            scrollSpeedCard.visibility = View.GONE
             ttsManager.stop()
         }
     }
@@ -394,10 +423,13 @@ class ReaderActivity : AppCompatActivity() {
      * Start narrating current page
      */
     private fun startNarration() {
-        // Show mini status when playing
+        // Show mini status and scroll speed when playing
         val miniStatusCard = findViewById<View>(R.id.miniStatusCard)
         val miniStatusText = findViewById<TextView>(R.id.miniStatusText)
+        val scrollSpeedCard = findViewById<View>(R.id.scrollSpeedCard)
+        
         miniStatusCard.visibility = View.VISIBLE
+        scrollSpeedCard.visibility = View.VISIBLE
         
         lifecycleScope.launch {
             while (isPlaying && currentPageIndex < mangaPages.size) {
@@ -421,6 +453,14 @@ class ReaderActivity : AppCompatActivity() {
                     
                     // Highlight current bubble on the page
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
+                    
+                    // CRITICAL: Pan to show current bubble on screen!
+                    adapter.panToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
+                    
+                    // Delay based on scroll speed setting
+                    // scrollSpeedMultiplier: 0.3x = slow (1000ms), 1.0x = normal (300ms), 3.0x = fast (100ms)
+                    val panDelay = (300 / scrollSpeedMultiplier).toLong().coerceIn(100, 1000)
+                    kotlinx.coroutines.delay(panDelay)
                     
                     // Speak the text
                     val success = ttsManager.speak(bubble)

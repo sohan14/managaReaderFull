@@ -137,4 +137,42 @@ class MangaPageAdapter(
         }
         notifyItemChanged(pageIndex)
     }
+    
+    /**
+     * Auto-pan PhotoView to show current bubble being read
+     */
+    fun panToBubble(pageIndex: Int, bubbleIndex: Int, recyclerView: androidx.recyclerview.widget.RecyclerView) {
+        val viewHolder = recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
+        viewHolder?.let { holder ->
+            val page = pages[pageIndex]
+            if (bubbleIndex < page.speechBubbles.size) {
+                val bubble = page.speechBubbles[bubbleIndex]
+                val bubbleRect = bubble.boundingBox
+                
+                val photoView = holder.photoView
+                
+                // Post to ensure PhotoView is laid out
+                photoView.post {
+                    val viewHeight = photoView.height.toFloat()
+                    if (viewHeight <= 0) return@post
+                    
+                    // Get bubble center Y position
+                    val bubbleCenterY = bubbleRect.centerY().toFloat()
+                    
+                    // Calculate target Y to center bubble on screen
+                    // We want bubble center at screen center
+                    val targetY = bubbleCenterY - (viewHeight / 2f)
+                    
+                    // Smoothly pan to show the bubble
+                    // setScale will pan to put the point at center
+                    photoView.setScale(
+                        1.0f,  // Keep zoom at 1.0 (fit to screen)
+                        photoView.width / 2f,  // X center (middle of screen)
+                        bubbleCenterY,  // Y position (bubble center)
+                        true  // Animate smoothly
+                    )
+                }
+            }
+        }
+    }
 }
