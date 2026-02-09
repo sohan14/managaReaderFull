@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Each panel FILLS entire screen - no peeking next panel -->
+<!-- Each panel aligns to TOP of screen - no centering with black space -->
 <com.github.chrisbanes.photoview.PhotoView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/mangaPageImage"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:scaleType="fitCenter"
+    android:scaleType="fitStart"
     android:background="#000000" />
 
