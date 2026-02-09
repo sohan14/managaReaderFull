@@ -115,73 +115,128 @@ class MangaAnalyzer(private val context: Context) {
     }
 
     /**
-     * Analyze manga page for speech bubbles - IMPROVED FILTERING with LOGGING
+     * Split very tall images (webtoons) into manageable chunks for better OCR
+     */
+    private fun splitIntoChunks(bitmap: Bitmap): List<Bitmap> {
+        val chunks = mutableListOf<Bitmap>()
+        
+        // If image is not super tall, return as-is
+        val aspectRatio = bitmap.height.toFloat() / bitmap.width
+        if (aspectRatio <= 5.0f) {
+            // Normal image - process whole thing
+            DebugLogger.log(TAG, "Image aspect ratio ${String.format("%.1f", aspectRatio)} - processing as single image")
+            chunks.add(bitmap)
+            return chunks
+        }
+        
+        // Very tall webtoon - split into chunks
+        DebugLogger.log(TAG, "Very tall webtoon detected (aspect ${String.format("%.1f", aspectRatio)})")
+        DebugLogger.log(TAG, "Splitting into chunks for better OCR quality...")
+        
+        val chunkHeight = bitmap.width * 4  // Each chunk is 4x width (good aspect ratio)
+        val numChunks = (bitmap.height + chunkHeight - 1) / chunkHeight
+        
+        DebugLogger.log(TAG, "Splitting ${bitmap.height}px tall image into $numChunks chunks of ~${chunkHeight}px each")
+        
+        for (i in 0 until numChunks) {
+            val startY = i * chunkHeight
+            val endY = kotlin.math.min(startY + chunkHeight, bitmap.height)
+            val actualHeight = endY - startY
+            
+            val chunk = Bitmap.createBitmap(bitmap, 0, startY, bitmap.width, actualHeight)
+            chunks.add(chunk)
+            
+            DebugLogger.log(TAG, "Chunk $i: ${bitmap.width} x $actualHeight (${bitmap.width * actualHeight} pixels)")
+        }
+        
+        return chunks
+    }
+
+    /**
+     * Analyze manga page for speech bubbles - IMPROVED with CHUNK PROCESSING
      */
     suspend fun analyzePage(bitmap: Bitmap): List<SpeechBubble> {
-        val safeBitmap = scaleBitmapSafely(bitmap)
-        val image = InputImage.fromBitmap(safeBitmap, 0)
-        
         DebugLogger.log(TAG, "=== OCR Analysis Start ===")
-        DebugLogger.log(TAG, "Image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
+        DebugLogger.log(TAG, "Original image: ${bitmap.width} x ${bitmap.height}")
         
-        // Process text recognition with error handling
-        val textResult = try {
-            DebugLogger.log(TAG, "Starting CJK text recognition...")
-            val result = textRecognizer.process(image).await()
-            DebugLogger.log(TAG, "CJK text recognition completed successfully")
-            result
-        } catch (e: Exception) {
-            DebugLogger.log(TAG, "ERROR in text recognition: ${e.message}")
-            DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
-            e.printStackTrace()
-            throw e
+        // Split tall webtoons into chunks
+        val chunks = splitIntoChunks(bitmap)
+        val allBubbles = mutableListOf<SpeechBubble>()
+        
+        chunks.forEachIndexed { chunkIndex, chunk ->
+            DebugLogger.log(TAG, "--- Processing chunk ${chunkIndex + 1}/${chunks.size} ---")
+            
+            val safeBitmap = scaleBitmapSafely(chunk)
+            val image = InputImage.fromBitmap(safeBitmap, 0)
+            
+            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1} image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
+            
+            // Process text recognition with error handling
+            val textResult = try {
+                DebugLogger.log(TAG, "Starting CJK text recognition...")
+                val result = textRecognizer.process(image).await()
+                DebugLogger.log(TAG, "CJK text recognition completed successfully")
+                result
+            } catch (e: Exception) {
+                DebugLogger.log(TAG, "ERROR in text recognition: ${e.message}")
+                DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
+                e.printStackTrace()
+                throw e
+            }
+            
+            // Process face detection with error handling
+            val faces = try {
+                DebugLogger.log(TAG, "Starting face detection...")
+                val result = faceDetector.process(image).await()
+                DebugLogger.log(TAG, "Face detection completed successfully")
+                result
+            } catch (e: Exception) {
+                DebugLogger.log(TAG, "ERROR in face detection: ${e.message}")
+                DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
+                e.printStackTrace()
+                emptyList()
+            }
+            
+            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: OCR found ${textResult.textBlocks.size} text blocks")
+            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: Face detection found ${faces.size} faces")
+            
+            if (textResult.textBlocks.isEmpty()) {
+                DebugLogger.log(TAG, "WARNING: Chunk ${chunkIndex + 1} returned 0 text blocks!")
+            }
+            
+            // Collect all text blocks
+            val rawBlocks = mutableListOf<Pair<Rect, String>>()
+            textResult.textBlocks.forEachIndexed { index, block ->
+                val boundingBox = block.boundingBox ?: return@forEachIndexed
+                val text = block.text
+                
+                // Adjust bounding box for chunk offset
+                val adjustedBox = Rect(
+                    boundingBox.left,
+                    boundingBox.top + (chunkIndex * chunk.height),
+                    boundingBox.right,
+                    boundingBox.bottom + (chunkIndex * chunk.height)
+                )
+                
+                rawBlocks.add(Pair(adjustedBox, text))
+                DebugLogger.log(TAG, "  Block $index: '${text.take(30)}...' size=${boundingBox.width()}x${boundingBox.height()}")
+            }
+            
+            // Filter and merge blocks for this chunk
+            val chunkBubbles = filterAndMergeBubbles(rawBlocks, safeBitmap, faces)
+            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: ${chunkBubbles.size} speech bubbles detected")
+            
+            allBubbles.addAll(chunkBubbles)
         }
         
-        // Process face detection with error handling
-        val faces = try {
-            DebugLogger.log(TAG, "Starting face detection...")
-            val result = faceDetector.process(image).await()
-            DebugLogger.log(TAG, "Face detection completed successfully")
-            result
-        } catch (e: Exception) {
-            DebugLogger.log(TAG, "ERROR in face detection: ${e.message}")
-            DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
-            e.printStackTrace()
-            emptyList()
-        }
+        DebugLogger.log(TAG, "=== OCR Analysis Complete ===")
+        DebugLogger.log(TAG, "Total across all chunks: ${allBubbles.size} speech bubbles detected")
         
-        DebugLogger.log(TAG, "OCR found ${textResult.textBlocks.size} text blocks")
-        DebugLogger.log(TAG, "Face detection found ${faces.size} faces")
-        
-        if (textResult.textBlocks.isEmpty()) {
-            DebugLogger.log(TAG, "WARNING: OCR returned 0 text blocks!")
-            DebugLogger.log(TAG, "This could mean:")
-            DebugLogger.log(TAG, "  1. CJK model not downloaded yet (downloads on first use)")
-            DebugLogger.log(TAG, "  2. Image quality too low for OCR")
-            DebugLogger.log(TAG, "  3. Text too stylized/artistic")
-            DebugLogger.log(TAG, "  4. Silent OCR processing error")
-            DebugLogger.log(TAG, "Try selecting the image again - model may be downloading in background")
-        }
-        
-        // First pass: collect all text blocks
-        val rawBlocks = mutableListOf<Pair<Rect, String>>()
-        textResult.textBlocks.forEachIndexed { index, block ->
-            val boundingBox = block.boundingBox ?: return@forEachIndexed
-            val text = block.text
-            rawBlocks.add(Pair(boundingBox, text))
-            DebugLogger.log(TAG, "Block $index: '${text.take(20)}...' size=${boundingBox.width()}x${boundingBox.height()} area=${boundingBox.width() * boundingBox.height()}")
-        }
-        
-        // Filter and merge blocks to form speech bubbles
-        val speechBubbles = filterAndMergeBubbles(rawBlocks, safeBitmap, faces)
-        
-        DebugLogger.log(TAG, "Final result: ${speechBubbles.size} speech bubbles detected")
-        speechBubbles.forEachIndexed { index, bubble ->
+        allBubbles.forEachIndexed { index, bubble ->
             DebugLogger.log(TAG, "Bubble $index: '${bubble.text.take(30)}...' emotion=${bubble.emotion} gender=${bubble.characterGender}")
         }
-        DebugLogger.log(TAG, "=== OCR Analysis End ===")
         
-        return speechBubbles.sortedBy { it.readingOrder }
+        return allBubbles.sortedBy { it.readingOrder }
     }
 
     /**
