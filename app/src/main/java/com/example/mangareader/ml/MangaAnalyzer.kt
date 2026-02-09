@@ -152,15 +152,27 @@ class MangaAnalyzer(private val context: Context) {
     }
 
     /**
-     * Analyze manga page for speech bubbles - IMPROVED with CHUNK PROCESSING
+     * Result of analyzing a page - may contain multiple pages if image was chunked
      */
-    suspend fun analyzePage(bitmap: Bitmap): List<SpeechBubble> {
+    data class AnalysisResult(
+        val pages: List<PageData>
+    )
+    
+    data class PageData(
+        val bitmap: Bitmap,
+        val speechBubbles: List<SpeechBubble>
+    )
+
+    /**
+     * Analyze manga page for speech bubbles - Returns multiple pages for tall webtoons
+     */
+    suspend fun analyzePage(bitmap: Bitmap): AnalysisResult {
         DebugLogger.log(TAG, "=== OCR Analysis Start ===")
         DebugLogger.log(TAG, "Original image: ${bitmap.width} x ${bitmap.height}")
         
         // Split tall webtoons into chunks
         val chunks = splitIntoChunks(bitmap)
-        val allBubbles = mutableListOf<SpeechBubble>()
+        val pages = mutableListOf<PageData>()
         
         chunks.forEachIndexed { chunkIndex, chunk ->
             DebugLogger.log(TAG, "--- Processing chunk ${chunkIndex + 1}/${chunks.size} ---")
@@ -172,9 +184,9 @@ class MangaAnalyzer(private val context: Context) {
             
             // Process text recognition with error handling
             val textResult = try {
-                DebugLogger.log(TAG, "Starting CJK text recognition...")
+                DebugLogger.log(TAG, "Starting Latin text recognition...")
                 val result = textRecognizer.process(image).await()
-                DebugLogger.log(TAG, "CJK text recognition completed successfully")
+                DebugLogger.log(TAG, "Text recognition completed successfully")
                 result
             } catch (e: Exception) {
                 DebugLogger.log(TAG, "ERROR in text recognition: ${e.message}")
@@ -199,43 +211,36 @@ class MangaAnalyzer(private val context: Context) {
             DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: OCR found ${textResult.textBlocks.size} text blocks")
             DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: Face detection found ${faces.size} faces")
             
-            if (textResult.textBlocks.isEmpty()) {
-                DebugLogger.log(TAG, "WARNING: Chunk ${chunkIndex + 1} returned 0 text blocks!")
-            }
-            
             // Collect all text blocks
             val rawBlocks = mutableListOf<Pair<Rect, String>>()
             textResult.textBlocks.forEachIndexed { index, block ->
                 val boundingBox = block.boundingBox ?: return@forEachIndexed
                 val text = block.text
-                
-                // Adjust bounding box for chunk offset
-                val adjustedBox = Rect(
-                    boundingBox.left,
-                    boundingBox.top + (chunkIndex * chunk.height),
-                    boundingBox.right,
-                    boundingBox.bottom + (chunkIndex * chunk.height)
-                )
-                
-                rawBlocks.add(Pair(adjustedBox, text))
+                rawBlocks.add(Pair(boundingBox, text))
                 DebugLogger.log(TAG, "  Block $index: '${text.take(30)}...' size=${boundingBox.width()}x${boundingBox.height()}")
             }
             
             // Filter and merge blocks for this chunk
-            val chunkBubbles = filterAndMergeBubbles(rawBlocks, safeBitmap, faces)
-            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: ${chunkBubbles.size} speech bubbles detected")
+            var chunkBubbles = filterAndMergeBubbles(rawBlocks, safeBitmap, faces)
             
-            allBubbles.addAll(chunkBubbles)
+            // CRITICAL FIX: Sort bubbles by Y position (top to bottom reading order)
+            chunkBubbles = chunkBubbles.sortedBy { it.boundingBox.top }
+            
+            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: ${chunkBubbles.size} speech bubbles detected")
+            chunkBubbles.forEachIndexed { idx, bubble ->
+                DebugLogger.log(TAG, "  Bubble $idx (Y=${bubble.boundingBox.top}): '${bubble.text.take(30)}...'")
+            }
+            
+            // Create a page for this chunk
+            pages.add(PageData(chunk, chunkBubbles))
         }
         
         DebugLogger.log(TAG, "=== OCR Analysis Complete ===")
-        DebugLogger.log(TAG, "Total across all chunks: ${allBubbles.size} speech bubbles detected")
+        DebugLogger.log(TAG, "Created ${pages.size} pages from image")
+        val totalBubbles = pages.sumOf { it.speechBubbles.size }
+        DebugLogger.log(TAG, "Total bubbles across all pages: $totalBubbles")
         
-        allBubbles.forEachIndexed { index, bubble ->
-            DebugLogger.log(TAG, "Bubble $index: '${bubble.text.take(30)}...' emotion=${bubble.emotion} gender=${bubble.characterGender}")
-        }
-        
-        return allBubbles.sortedBy { it.readingOrder }
+        return AnalysisResult(pages)
     }
 
     /**

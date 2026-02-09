@@ -23,6 +23,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Main reading activity with auto-narration and scrolling
@@ -225,23 +226,50 @@ class ReaderActivity : AppCompatActivity() {
                             DebugLogger.log(TAG, "=== PAGE $index LOADED ===")
                             DebugLogger.log(TAG, "Original bitmap size: ${bitmap.width} x ${bitmap.height}")
                             
-                            val speechBubbles = mangaAnalyzer.analyzePage(bitmap)
+                            val analysisResult = mangaAnalyzer.analyzePage(bitmap)
                             
-                            Log.d(TAG, "Page $index: Found ${speechBubbles.size} bubbles")
-                            speechBubbles.forEachIndexed { bubbleIndex, bubble ->
-                                Log.d(TAG, "  Bubble $bubbleIndex: '${bubble.text}'")
-                            }
-                            
-                            val mangaPage = MangaPage(
-                                pageNumber = index,
-                                imagePath = path,
-                                speechBubbles = speechBubbles,
-                                isProcessed = true
-                            )
-                            
-                            withContext(Dispatchers.Main) {
-                                mangaPages.add(mangaPage)
-                                adapter.notifyItemInserted(mangaPages.size - 1)
+                            // Handle result - may contain multiple pages if image was chunked
+                            if (analysisResult.pages.size == 1) {
+                                // Normal single page
+                                val pageData = analysisResult.pages[0]
+                                Log.d(TAG, "Page $index: Found ${pageData.speechBubbles.size} bubbles")
+                                
+                                val mangaPage = MangaPage(
+                                    pageNumber = mangaPages.size,
+                                    imagePath = path,
+                                    speechBubbles = pageData.speechBubbles,
+                                    isProcessed = true
+                                )
+                                
+                                withContext(Dispatchers.Main) {
+                                    mangaPages.add(mangaPage)
+                                    adapter.notifyItemInserted(mangaPages.size - 1)
+                                }
+                            } else {
+                                // Tall webtoon - split into multiple pages (one per chunk)
+                                Log.d(TAG, "Page $index: Tall webtoon split into ${analysisResult.pages.size} chunks")
+                                
+                                analysisResult.pages.forEachIndexed { chunkIdx, pageData ->
+                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles")
+                                    
+                                    // Save chunk bitmap to temp file
+                                    val chunkFile = File(cacheDir, "chunk_${index}_${chunkIdx}.jpg")
+                                    chunkFile.outputStream().use { out ->
+                                        pageData.bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                                    }
+                                    
+                                    val mangaPage = MangaPage(
+                                        pageNumber = mangaPages.size,
+                                        imagePath = chunkFile.absolutePath,
+                                        speechBubbles = pageData.speechBubbles,
+                                        isProcessed = true
+                                    )
+                                    
+                                    withContext(Dispatchers.Main) {
+                                        mangaPages.add(mangaPage)
+                                        adapter.notifyItemInserted(mangaPages.size - 1)
+                                    }
+                                }
                             }
                         }
                     }
@@ -321,9 +349,6 @@ class ReaderActivity : AppCompatActivity() {
                     
                     // Highlight current bubble on the page
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
-                    
-                    // Scroll to show the current bubble (especially important for webtoons)
-                    adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
                     
                     // Speak the text
                     val success = ttsManager.speak(bubble)
