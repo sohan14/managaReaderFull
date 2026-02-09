@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Full-width webtoon display with zoom support -->
+<!-- Each page fills entire screen - ONE screen per swipe -->
 <com.github.chrisbanes.photoview.PhotoView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/mangaPageImage"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:adjustViewBounds="true"
-    android:scaleType="fitStart"
+    android:layout_height="match_parent"
+    android:scaleType="fitCenter"
     android:background="#000000" />
 

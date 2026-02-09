@@ -109,6 +109,11 @@ class ReaderActivity : AppCompatActivity() {
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
+        // CRITICAL: Add PagerSnapHelper to snap to one full screen at a time!
+        // This ensures only ONE chunk visible, not multiple
+        val snapHelper = androidx.recyclerview.widget.PagerSnapHelper()
+        snapHelper.attachToRecyclerView(recyclerView)
+        
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
@@ -312,11 +317,19 @@ class ReaderActivity : AppCompatActivity() {
                             DebugLogger.log(TAG, "=== PAGE $index LOADED ===")
                             DebugLogger.log(TAG, "Original bitmap size: ${bitmap.width} x ${bitmap.height}")
                             
-                            // Get screen height for optimal chunking (each chunk = one screen)
+                            // Get screen height for optimal chunking (each chunk = one full screen)
                             val screenHeight = recyclerView.height
-                            DebugLogger.log(TAG, "Screen height: ${screenHeight}px - will chunk to match this")
+                            val chunkHeight = if (screenHeight > 0) {
+                                screenHeight
+                            } else {
+                                // Fallback: use display metrics if RecyclerView not measured yet  
+                                resources.displayMetrics.heightPixels
+                            }
                             
-                            val analysisResult = mangaAnalyzer.analyzePage(bitmap, screenHeight)
+                            DebugLogger.log(TAG, "Chunk height: ${chunkHeight}px (full screen)")
+                            DebugLogger.log(TAG, "Each chunk = one complete screen!")
+                            
+                            val analysisResult = mangaAnalyzer.analyzePage(bitmap, chunkHeight)
                             
                             // Handle result - may contain multiple pages if image was chunked
                             if (analysisResult.pages.size == 1) {
