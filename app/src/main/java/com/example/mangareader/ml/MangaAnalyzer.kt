@@ -196,24 +196,29 @@ class MangaAnalyzer(private val context: Context) {
         
         val panelBoundaries = detectPanelBoundaries(bitmap)
         
-        // Don't group panels - make EACH panel its own screen!
-        // One panel per screen = maximum readability!
-        DebugLogger.log(TAG, "Creating ONE scene per panel for maximum readability...")
+        // Filter out tiny panels (white space separators)
+        // Keep only REAL panels (content)
+        DebugLogger.log(TAG, "Filtering panels - keeping only real content panels...")
+        
+        val minPanelHeight = 400 // Minimum height for a real panel (skip white space)
         
         for (i in 0 until panelBoundaries.size - 1) {
             val panelStart = panelBoundaries[i]
             val panelEnd = panelBoundaries[i + 1]
             val panelHeight = panelEnd - panelStart
             
-            if (panelHeight > 0) {
+            // Only keep panels that are real content (not tiny white space)
+            if (panelHeight >= minPanelHeight) {
                 val chunkBitmap = Bitmap.createBitmap(bitmap, 0, panelStart, bitmap.width, panelHeight)
                 chunks.add(ChunkInfo(chunkBitmap, panelStart))
-                DebugLogger.log(TAG, "Panel ${i + 1}: Y=$panelStart to $panelEnd (${panelHeight}px)")
+                DebugLogger.log(TAG, "Panel ${chunks.size}: Y=$panelStart to $panelEnd (${panelHeight}px)")
+            } else {
+                DebugLogger.log(TAG, "Skipping tiny panel at Y=$panelStart (only ${panelHeight}px - white space)")
             }
         }
         
-        DebugLogger.log(TAG, "Created ${chunks.size} scenes (one panel per screen)")
-        DebugLogger.log(TAG, "Each panel will be its own page for maximum readability!")
+        DebugLogger.log(TAG, "Created ${chunks.size} pages (one REAL panel per page)")
+        DebugLogger.log(TAG, "Each panel starts at top of screen - next panel may peek at bottom (that's OK!)")
         
         return chunks
     }
