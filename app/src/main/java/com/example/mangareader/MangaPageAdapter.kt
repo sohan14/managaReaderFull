@@ -137,4 +137,42 @@ class MangaPageAdapter(
         }
         notifyItemChanged(pageIndex)
     }
+    
+    /**
+     * Scroll PhotoView to show specific bubble
+     */
+    fun scrollToBubble(pageIndex: Int, bubbleIndex: Int, recyclerView: androidx.recyclerview.widget.RecyclerView) {
+        val viewHolder = recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
+        viewHolder?.let { holder ->
+            val page = pages[pageIndex]
+            if (bubbleIndex < page.speechBubbles.size) {
+                val bubble = page.speechBubbles[bubbleIndex]
+                val bubbleRect = bubble.boundingBox
+                
+                // Get PhotoView dimensions
+                val photoView = holder.photoView
+                val viewWidth = photoView.width.toFloat()
+                val viewHeight = photoView.height.toFloat()
+                
+                if (viewWidth > 0 && viewHeight > 0) {
+                    // Calculate center of bubble
+                    val bubbleCenterX = bubbleRect.centerX().toFloat()
+                    val bubbleCenterY = bubbleRect.centerY().toFloat()
+                    
+                    // Get current scale
+                    val scale = photoView.scale
+                    
+                    // Calculate desired position to center the bubble on screen
+                    // We want the bubble center to be in the middle of the visible area
+                    val targetX = (bubbleCenterX * scale) - (viewWidth / 2f)
+                    val targetY = (bubbleCenterY * scale) - (viewHeight / 2f)
+                    
+                    // Smoothly pan to the bubble position
+                    photoView.post {
+                        photoView.setScale(1.0f, bubbleCenterX, bubbleCenterY, true)
+                    }
+                }
+            }
+        }
+    }
 }

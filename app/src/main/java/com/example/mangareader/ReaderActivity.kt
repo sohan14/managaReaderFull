@@ -322,6 +322,9 @@ class ReaderActivity : AppCompatActivity() {
                     // Highlight current bubble on the page
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
                     
+                    // Scroll to show the current bubble (especially important for webtoons)
+                    adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
+                    
                     // Speak the text
                     val success = ttsManager.speak(bubble)
                     
