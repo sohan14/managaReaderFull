@@ -116,26 +116,39 @@ class MangaAnalyzer(private val context: Context) {
     /**
      * Split very tall images (webtoons) into manageable chunks for better OCR
      */
-    private fun splitIntoChunks(bitmap: Bitmap): List<Bitmap> {
+    /**
+     * Split tall webtoon into screen-sized chunks for perfect viewing
+     * Each chunk = one screen height = one swipeable page
+     */
+    private fun splitIntoChunks(bitmap: Bitmap, screenHeight: Int): List<Bitmap> {
         val chunks = mutableListOf<Bitmap>()
         
         // If image is not super tall, return as-is
         val aspectRatio = bitmap.height.toFloat() / bitmap.width
-        if (aspectRatio <= 5.0f) {
+        if (aspectRatio <= 2.0f) {
             // Normal image - process whole thing
             DebugLogger.log(TAG, "Image aspect ratio ${String.format("%.1f", aspectRatio)} - processing as single image")
             chunks.add(bitmap)
             return chunks
         }
         
-        // Very tall webtoon - split into chunks
+        // Very tall webtoon - split into SCREEN-HEIGHT chunks!
         DebugLogger.log(TAG, "Very tall webtoon detected (aspect ${String.format("%.1f", aspectRatio)})")
-        DebugLogger.log(TAG, "Splitting into chunks for better OCR quality...")
+        DebugLogger.log(TAG, "Splitting into screen-height chunks for perfect viewing...")
         
-        val chunkHeight = bitmap.width * 4  // Each chunk is 4x width (good aspect ratio)
+        // Use screen height as chunk height for 1:1 screen mapping
+        val chunkHeight = if (screenHeight > 0) {
+            screenHeight
+        } else {
+            // Fallback if screen height not available
+            bitmap.width * 2  // Conservative estimate
+        }
+        
         val numChunks = (bitmap.height + chunkHeight - 1) / chunkHeight
         
+        DebugLogger.log(TAG, "Screen height: ${screenHeight}px")
         DebugLogger.log(TAG, "Splitting ${bitmap.height}px tall image into $numChunks chunks of ~${chunkHeight}px each")
+        DebugLogger.log(TAG, "Result: Each chunk = one screen = one swipeable page!")
         
         for (i in 0 until numChunks) {
             val startY = i * chunkHeight
@@ -145,7 +158,7 @@ class MangaAnalyzer(private val context: Context) {
             val chunk = Bitmap.createBitmap(bitmap, 0, startY, bitmap.width, actualHeight)
             chunks.add(chunk)
             
-            DebugLogger.log(TAG, "Chunk $i: ${bitmap.width} x $actualHeight (${bitmap.width * actualHeight} pixels)")
+            DebugLogger.log(TAG, "Chunk $i (Screen ${i+1}): ${bitmap.width} x $actualHeight (${bitmap.width * actualHeight} pixels)")
         }
         
         return chunks
@@ -165,13 +178,15 @@ class MangaAnalyzer(private val context: Context) {
 
     /**
      * Analyze manga page for speech bubbles - Returns multiple pages for tall webtoons
+     * @param bitmap The image to analyze
+     * @param screenHeight Screen height in pixels for optimal chunking (0 if unknown)
      */
-    suspend fun analyzePage(bitmap: Bitmap): AnalysisResult {
+    suspend fun analyzePage(bitmap: Bitmap, screenHeight: Int = 0): AnalysisResult {
         DebugLogger.log(TAG, "=== OCR Analysis Start ===")
         DebugLogger.log(TAG, "Original image: ${bitmap.width} x ${bitmap.height}")
         
-        // Split tall webtoons into chunks
-        val chunks = splitIntoChunks(bitmap)
+        // Split tall webtoons into screen-sized chunks
+        val chunks = splitIntoChunks(bitmap, screenHeight)
         val pages = mutableListOf<PageData>()
         
         chunks.forEachIndexed { chunkIndex, chunk ->

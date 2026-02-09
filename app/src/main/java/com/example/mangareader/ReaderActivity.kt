@@ -312,7 +312,11 @@ class ReaderActivity : AppCompatActivity() {
                             DebugLogger.log(TAG, "=== PAGE $index LOADED ===")
                             DebugLogger.log(TAG, "Original bitmap size: ${bitmap.width} x ${bitmap.height}")
                             
-                            val analysisResult = mangaAnalyzer.analyzePage(bitmap)
+                            // Get screen height for optimal chunking (each chunk = one screen)
+                            val screenHeight = recyclerView.height
+                            DebugLogger.log(TAG, "Screen height: ${screenHeight}px - will chunk to match this")
+                            
+                            val analysisResult = mangaAnalyzer.analyzePage(bitmap, screenHeight)
                             
                             // Handle result - may contain multiple pages if image was chunked
                             if (analysisResult.pages.size == 1) {
