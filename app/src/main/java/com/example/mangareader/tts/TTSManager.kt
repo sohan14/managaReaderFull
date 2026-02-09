@@ -176,35 +176,37 @@ class TTSManager(context: Context) {
     }
     
     /**
-     * IMPROVED emotion-based pitch and speed
+     * IMPROVED emotion-based pitch and speed - MORE EXPRESSIVE!
      */
     private fun getEmotionModulation(emotion: Emotion, gender: Gender): Pair<Float, Float> {
-        // Base pitch varies by gender
+        // Base pitch varies by gender - more dramatic difference
         val basePitch = when (gender) {
-            Gender.MALE -> 0.9f
-            Gender.FEMALE -> 1.1f
+            Gender.MALE -> 0.85f    // Lower male voice
+            Gender.FEMALE -> 1.25f  // Higher female voice
             Gender.UNKNOWN -> 1.0f
         }
         
-        // Emotion modifies both pitch and speed MORE dramatically
+        // Emotion modifies both pitch and speed DRAMATICALLY for more expression!
         return when (emotion) {
-            Emotion.HAPPY -> Pair(basePitch + 0.3f, 1.15f)      // Higher, faster, cheerful
-            Emotion.SAD -> Pair(basePitch - 0.25f, 0.7f)        // Lower, slower, melancholic
-            Emotion.ANGRY -> Pair(basePitch + 0.1f, 1.25f)      // Slightly higher, fast, intense
-            Emotion.SURPRISED -> Pair(basePitch + 0.35f, 1.2f)  // Much higher, fast, shocked
-            Emotion.SCARED -> Pair(basePitch + 0.4f, 1.3f)      // Highest, fastest, panicked
-            Emotion.NEUTRAL -> Pair(basePitch, 0.95f)           // Normal pace
+            Emotion.HAPPY -> Pair(basePitch + 0.4f, 1.2f)       // Much higher, faster, very cheerful!
+            Emotion.SAD -> Pair(basePitch - 0.3f, 0.65f)        // Much lower, very slow, depressed
+            Emotion.ANGRY -> Pair(basePitch + 0.15f, 1.35f)     // Higher, very fast, intense shouting!
+            Emotion.SURPRISED -> Pair(basePitch + 0.5f, 1.25f)  // Very high, fast, totally shocked!
+            Emotion.SCARED -> Pair(basePitch + 0.45f, 1.4f)     // High, very fast, panicked!
+            Emotion.NEUTRAL -> Pair(basePitch, 0.95f)           // Normal conversational pace
         }
     }
     
     /**
-     * Enhance text with pauses and emphasis - ONLY pause on periods
+     * Enhance text with pauses and emphasis - REMOVE LINE BREAKS
      */
     private fun enhanceTextForSpeech(text: String, emotion: Emotion): String {
+        // CRITICAL FIX: Remove line breaks so text reads continuously
+        // "I want..\nto go home" becomes "I want.. to go home"
         var enhanced = text
-        
-        // ONLY add pause for periods (full stops) - not for ... or ?
-        // TTS naturally handles sentence breaks
+            .replace("\n", " ")   // Replace newlines with spaces
+            .replace("  +".toRegex(), " ")  // Remove multiple spaces
+            .trim()
         
         // For scared emotion, add slight stutter effect (minimal)
         if (emotion == Emotion.SCARED && enhanced.length > 10 && !enhanced.contains(".")) {
@@ -216,7 +218,7 @@ class TTSManager(context: Context) {
             }
         }
         
-        return enhanced.trim()
+        return enhanced
     }
 
     /**

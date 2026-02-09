@@ -54,6 +54,15 @@ class ReaderActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // FULLSCREEN MODE - Hide action bar and status bar
+        supportActionBar?.hide()
+        window.decorView.systemUiVisibility = (
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+            android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        )
+        
         try {
             setContentView(R.layout.activity_reader)
             
@@ -80,13 +89,19 @@ class ReaderActivity : AppCompatActivity() {
         statusText = findViewById(R.id.statusText)
         selectVoiceButton = findViewById(R.id.selectVoiceButton)
         
+        // Get new UI elements
+        val floatingPlayButton = findViewById<FloatingActionButton>(R.id.floatingPlayButton)
+        val miniStatusCard = findViewById<View>(R.id.miniStatusCard)
+        val miniStatusText = findViewById<TextView>(R.id.miniStatusText)
+        val controlsContainer = findViewById<View>(R.id.controlsContainer)
+        val closeControlsButton = findViewById<ImageView>(R.id.closeControlsButton)
+        val rootLayout = findViewById<View>(R.id.rootLayout)
+        
         // Setup RecyclerView for VERTICAL webtoon scrolling
         val layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
         recyclerView.layoutManager = layoutManager
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
-        
-        // NO snap helper for webtoons - allow smooth vertical scrolling
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -102,9 +117,52 @@ class ReaderActivity : AppCompatActivity() {
             }
         })
         
-        // Play/Pause button
+        // Floating play button - Main control
+        floatingPlayButton.setOnClickListener {
+            togglePlayPause()
+            // Also sync with main play button
+            playPauseButton.setImageResource(
+                if (isPlaying) android.R.drawable.ic_media_pause
+                else android.R.drawable.ic_media_play
+            )
+        }
+        
+        // Play/Pause button (in controls panel)
         playPauseButton.setOnClickListener {
             togglePlayPause()
+            // Also sync with floating button
+            floatingPlayButton.setImageResource(
+                if (isPlaying) android.R.drawable.ic_media_pause
+                else android.R.drawable.ic_media_play
+            )
+        }
+        
+        // Long press on floating button or tap screen = Show full controls
+        floatingPlayButton.setOnLongClickListener {
+            controlsContainer.visibility = View.VISIBLE
+            floatingPlayButton.visibility = View.GONE
+            miniStatusCard.visibility = View.GONE
+            true
+        }
+        
+        rootLayout.setOnClickListener {
+            // Tap screen to toggle controls
+            if (controlsContainer.visibility == View.VISIBLE) {
+                controlsContainer.visibility = View.GONE
+                floatingPlayButton.visibility = View.VISIBLE
+                if (isPlaying) miniStatusCard.visibility = View.VISIBLE
+            } else {
+                controlsContainer.visibility = View.VISIBLE
+                floatingPlayButton.visibility = View.GONE
+                miniStatusCard.visibility = View.GONE
+            }
+        }
+        
+        // Close button hides controls
+        closeControlsButton.setOnClickListener {
+            controlsContainer.visibility = View.GONE
+            floatingPlayButton.visibility = View.VISIBLE
+            if (isPlaying) miniStatusCard.visibility = View.VISIBLE
         }
         
         // Speed control
@@ -317,11 +375,17 @@ class ReaderActivity : AppCompatActivity() {
     private fun togglePlayPause() {
         isPlaying = !isPlaying
         
+        val floatingPlayButton = findViewById<FloatingActionButton>(R.id.floatingPlayButton)
+        val miniStatusCard = findViewById<View>(R.id.miniStatusCard)
+        
         if (isPlaying) {
             playPauseButton.setImageResource(android.R.drawable.ic_media_pause)
+            floatingPlayButton.setImageResource(android.R.drawable.ic_media_pause)
             startNarration()
         } else {
             playPauseButton.setImageResource(android.R.drawable.ic_media_play)
+            floatingPlayButton.setImageResource(android.R.drawable.ic_media_play)
+            miniStatusCard.visibility = View.GONE
             ttsManager.stop()
         }
     }
@@ -330,6 +394,11 @@ class ReaderActivity : AppCompatActivity() {
      * Start narrating current page
      */
     private fun startNarration() {
+        // Show mini status when playing
+        val miniStatusCard = findViewById<View>(R.id.miniStatusCard)
+        val miniStatusText = findViewById<TextView>(R.id.miniStatusText)
+        miniStatusCard.visibility = View.VISIBLE
+        
         lifecycleScope.launch {
             while (isPlaying && currentPageIndex < mangaPages.size) {
                 val currentPage = mangaPages[currentPageIndex]
@@ -346,7 +415,9 @@ class ReaderActivity : AppCompatActivity() {
                         Emotion.SCARED -> "😰"
                         Emotion.NEUTRAL -> "💬"
                     }
-                    statusText.text = "$emotionIcon ${bubble.text.take(30)}..."
+                    val statusMessage = "$emotionIcon ${bubble.text.take(30)}..."
+                    statusText.text = statusMessage
+                    miniStatusText.text = statusMessage  // Also update mini status
                     
                     // Highlight current bubble on the page
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
