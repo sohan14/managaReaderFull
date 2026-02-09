@@ -352,35 +352,31 @@ class ReaderActivity : AppCompatActivity() {
                                 Log.d(TAG, "Page $index: Merging ${analysisResult.pages.size} panel chunks into single continuous page")
                                 
                                 val allBubbles = mutableListOf<SpeechBubble>()
-                                var cumulativeOffsetY = 0
                                 
                                 analysisResult.pages.forEachIndexed { chunkIdx, pageData ->
-                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles at Y offset $cumulativeOffsetY")
+                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles, originalYOffset=${pageData.originalYOffset}")
                                     
-                                    // Calculate scaling factor from processed chunk to original
+                                    // Calculate scaling factor from processed chunk to original chunk
                                     val scaleX = bitmap.width.toFloat() / pageData.bitmap.width.toFloat()
-                                    val scaleY = bitmap.width.toFloat() / pageData.bitmap.width.toFloat() // Use same scale
+                                    val scaleY = bitmap.width.toFloat() / pageData.bitmap.width.toFloat() // Same scale to preserve aspect
                                     
-                                    // Adjust bubble positions: scale + cumulative offset
+                                    // Adjust bubble positions: scale coordinates + add original Y offset
                                     pageData.speechBubbles.forEach { bubble ->
                                         val adjustedBubble = SpeechBubble(
                                             text = bubble.text,
                                             boundingBox = android.graphics.Rect(
                                                 (bubble.boundingBox.left * scaleX).toInt(),
-                                                (bubble.boundingBox.top * scaleY).toInt() + cumulativeOffsetY,
+                                                (bubble.boundingBox.top * scaleY).toInt() + pageData.originalYOffset,
                                                 (bubble.boundingBox.right * scaleX).toInt(),
-                                                (bubble.boundingBox.bottom * scaleY).toInt() + cumulativeOffsetY
+                                                (bubble.boundingBox.bottom * scaleY).toInt() + pageData.originalYOffset
                                             ),
                                             confidence = bubble.confidence,
                                             characterGender = bubble.characterGender,
                                             emotion = bubble.emotion
                                         )
                                         allBubbles.add(adjustedBubble)
+                                        Log.d(TAG, "    Bubble '${bubble.text.take(20)}...' Y: ${bubble.boundingBox.top} → ${(bubble.boundingBox.top * scaleY).toInt() + pageData.originalYOffset}")
                                     }
-                                    
-                                    // Add this chunk's ORIGINAL height to cumulative offset
-                                    // (scale the processed height back to original dimensions)
-                                    cumulativeOffsetY += (pageData.bitmap.height * scaleY).toInt()
                                 }
                                 
                                 // Sort bubbles by Y position (top to bottom)

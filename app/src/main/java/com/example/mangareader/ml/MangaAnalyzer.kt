@@ -167,18 +167,26 @@ class MangaAnalyzer(private val context: Context) {
     }
     
     /**
+     * Info about a chunk: the bitmap and where it came from in the original image
+     */
+    private data class ChunkInfo(
+        val bitmap: Bitmap,
+        val originalYOffset: Int  // Y position in original full image
+    )
+    
+    /**
      * Split webtoon at panel boundaries for perfect story continuity
      * Each chunk contains complete panels (no mid-panel cuts)
      */
-    private fun splitIntoChunks(bitmap: Bitmap, screenHeight: Int): List<Bitmap> {
-        val chunks = mutableListOf<Bitmap>()
+    private fun splitIntoChunks(bitmap: Bitmap, screenHeight: Int): List<ChunkInfo> {
+        val chunks = mutableListOf<ChunkInfo>()
         
         // If image is not super tall, return as-is
         val aspectRatio = bitmap.height.toFloat() / bitmap.width
         if (aspectRatio <= 2.0f) {
             // Normal image - process whole thing
             DebugLogger.log(TAG, "Image aspect ratio ${String.format("%.1f", aspectRatio)} - processing as single image")
-            chunks.add(bitmap)
+            chunks.add(ChunkInfo(bitmap, 0))
             return chunks
         }
         
@@ -203,8 +211,8 @@ class MangaAnalyzer(private val context: Context) {
                 val actualHeight = endY - chunkStart
                 
                 if (actualHeight > 0) {
-                    val chunk = Bitmap.createBitmap(bitmap, 0, chunkStart, bitmap.width, actualHeight)
-                    chunks.add(chunk)
+                    val chunkBitmap = Bitmap.createBitmap(bitmap, 0, chunkStart, bitmap.width, actualHeight)
+                    chunks.add(ChunkInfo(chunkBitmap, chunkStart))  // Track original Y offset!
                     DebugLogger.log(TAG, "Panel chunk: Y=$chunkStart to $endY (${actualHeight}px)")
                     
                     chunkStart = endY
@@ -227,7 +235,8 @@ class MangaAnalyzer(private val context: Context) {
     
     data class PageData(
         val bitmap: Bitmap,
-        val speechBubbles: List<SpeechBubble>
+        val speechBubbles: List<SpeechBubble>,
+        val originalYOffset: Int = 0  // Y position where this chunk started in the original full image
     )
 
     /**
@@ -239,14 +248,14 @@ class MangaAnalyzer(private val context: Context) {
         DebugLogger.log(TAG, "=== OCR Analysis Start ===")
         DebugLogger.log(TAG, "Original image: ${bitmap.width} x ${bitmap.height}")
         
-        // Split tall webtoons into screen-sized chunks
+        // Split tall webtoons into chunks at panel boundaries
         val chunks = splitIntoChunks(bitmap, screenHeight)
         val pages = mutableListOf<PageData>()
         
-        chunks.forEachIndexed { chunkIndex, chunk ->
+        chunks.forEachIndexed { chunkIndex, chunkInfo ->
             DebugLogger.log(TAG, "--- Processing chunk ${chunkIndex + 1}/${chunks.size} ---")
             
-            val safeBitmap = scaleBitmapSafely(chunk)
+            val safeBitmap = scaleBitmapSafely(chunkInfo.bitmap)
             val image = InputImage.fromBitmap(safeBitmap, 0)
             
             DebugLogger.log(TAG, "Chunk ${chunkIndex + 1} image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
@@ -300,8 +309,8 @@ class MangaAnalyzer(private val context: Context) {
                 DebugLogger.log(TAG, "  Bubble $idx (Y=${bubble.boundingBox.top}): '${bubble.text.take(30)}...'")
             }
             
-            // Create a page for this chunk
-            pages.add(PageData(chunk, chunkBubbles))
+            // Create a page for this chunk WITH original Y offset
+            pages.add(PageData(chunkInfo.bitmap, chunkBubbles, chunkInfo.originalYOffset))
         }
         
         DebugLogger.log(TAG, "=== OCR Analysis Complete ===")
