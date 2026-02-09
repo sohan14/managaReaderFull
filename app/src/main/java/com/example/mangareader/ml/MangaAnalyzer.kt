@@ -117,17 +117,42 @@ class MangaAnalyzer(private val context: Context) {
      * Split very tall images (webtoons) into manageable chunks for better OCR
      */
     /**
-     * DON'T split webtoons - keep them whole for story continuity!
-     * Users can scroll naturally through the full webtoon
+     * Split tall webtoons into chunks for OCR processing (better detection)
+     * But we'll merge all bubbles and display as ONE continuous page
      */
     private fun splitIntoChunks(bitmap: Bitmap, screenHeight: Int): List<Bitmap> {
         val chunks = mutableListOf<Bitmap>()
         
-        // ALWAYS return full image - no chunking!
-        // Chunking breaks story continuity
-        DebugLogger.log(TAG, "Processing full webtoon for continuous reading")
-        DebugLogger.log(TAG, "Image: ${bitmap.width} x ${bitmap.height}")
-        chunks.add(bitmap)
+        // If image is not super tall, return as-is
+        val aspectRatio = bitmap.height.toFloat() / bitmap.width
+        if (aspectRatio <= 2.0f) {
+            // Normal image - process whole thing
+            DebugLogger.log(TAG, "Image aspect ratio ${String.format("%.1f", aspectRatio)} - processing as single image")
+            chunks.add(bitmap)
+            return chunks
+        }
+        
+        // Very tall webtoon - split into chunks for OCR accuracy
+        DebugLogger.log(TAG, "Very tall webtoon detected (aspect ${String.format("%.1f", aspectRatio)})")
+        DebugLogger.log(TAG, "Splitting into chunks for accurate OCR, then merging for continuous display...")
+        
+        // Use reasonable chunk size for OCR (not too big to cause memory issues)
+        val chunkHeight = bitmap.width * 4  // 4:1 aspect ratio per chunk
+        val numChunks = (bitmap.height + chunkHeight - 1) / chunkHeight
+        
+        DebugLogger.log(TAG, "Splitting ${bitmap.height}px tall image into $numChunks chunks for OCR")
+        DebugLogger.log(TAG, "Will merge all bubbles into single continuous page after detection")
+        
+        for (i in 0 until numChunks) {
+            val startY = i * chunkHeight
+            val endY = kotlin.math.min(startY + chunkHeight, bitmap.height)
+            val actualHeight = endY - startY
+            
+            val chunk = Bitmap.createBitmap(bitmap, 0, startY, bitmap.width, actualHeight)
+            chunks.add(chunk)
+            
+            DebugLogger.log(TAG, "OCR Chunk $i: ${bitmap.width} x $actualHeight (${bitmap.width * actualHeight} pixels)")
+        }
         
         return chunks
     }

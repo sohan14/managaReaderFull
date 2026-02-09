@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.mangareader.ml.MangaAnalyzer
 import com.example.mangareader.model.Emotion
 import com.example.mangareader.model.MangaPage
+import com.example.mangareader.model.SpeechBubble
 import com.example.mangareader.tts.TTSManager
 import com.example.mangareader.utils.DebugLogger
 import com.google.android.material.button.MaterialButton
@@ -328,7 +329,7 @@ class ReaderActivity : AppCompatActivity() {
                             
                             val analysisResult = mangaAnalyzer.analyzePage(bitmap, chunkHeight)
                             
-                            // Handle result - may contain multiple pages if image was chunked
+                            // Handle result - merge all chunks into ONE continuous page
                             if (analysisResult.pages.size == 1) {
                                 // Normal single page
                                 val pageData = analysisResult.pages[0]
@@ -346,29 +347,51 @@ class ReaderActivity : AppCompatActivity() {
                                     adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
                             } else {
-                                // Tall webtoon - split into multiple pages (one per chunk)
-                                Log.d(TAG, "Page $index: Tall webtoon split into ${analysisResult.pages.size} chunks")
+                                // Tall webtoon - was chunked for OCR
+                                // MERGE all bubbles into ONE continuous page!
+                                Log.d(TAG, "Page $index: Merging ${analysisResult.pages.size} OCR chunks into single continuous page")
+                                
+                                val allBubbles = mutableListOf<SpeechBubble>()
+                                var chunkOffsetY = 0
                                 
                                 analysisResult.pages.forEachIndexed { chunkIdx, pageData ->
-                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles")
+                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles at Y offset $chunkOffsetY")
                                     
-                                    // Save chunk bitmap to temp file
-                                    val chunkFile = File(cacheDir, "chunk_${index}_${chunkIdx}.jpg")
-                                    chunkFile.outputStream().use { out ->
-                                        pageData.bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                                    // Adjust bubble Y positions for their offset in the full image
+                                    pageData.speechBubbles.forEach { bubble ->
+                                        val adjustedBubble = SpeechBubble(
+                                            text = bubble.text,
+                                            boundingBox = android.graphics.Rect(
+                                                bubble.boundingBox.left,
+                                                bubble.boundingBox.top + chunkOffsetY,
+                                                bubble.boundingBox.right,
+                                                bubble.boundingBox.bottom + chunkOffsetY
+                                            ),
+                                            characterGender = bubble.characterGender,
+                                            emotion = bubble.emotion
+                                        )
+                                        allBubbles.add(adjustedBubble)
                                     }
                                     
-                                    val mangaPage = MangaPage(
-                                        pageNumber = mangaPages.size,
-                                        imagePath = chunkFile.absolutePath,
-                                        speechBubbles = pageData.speechBubbles,
-                                        isProcessed = true
-                                    )
-                                    
-                                    withContext(Dispatchers.Main) {
-                                        mangaPages.add(mangaPage)
-                                        adapter.notifyItemInserted(mangaPages.size - 1)
-                                    }
+                                    chunkOffsetY += pageData.bitmap.height
+                                }
+                                
+                                // Sort bubbles by Y position (top to bottom)
+                                val sortedBubbles = allBubbles.sortedBy { it.boundingBox.top }
+                                
+                                Log.d(TAG, "Page $index: Total ${sortedBubbles.size} bubbles in continuous page")
+                                
+                                // Create ONE page with original full bitmap and all bubbles
+                                val mangaPage = MangaPage(
+                                    pageNumber = mangaPages.size,
+                                    imagePath = path,  // Original full image
+                                    speechBubbles = sortedBubbles,
+                                    isProcessed = true
+                                )
+                                
+                                withContext(Dispatchers.Main) {
+                                    mangaPages.add(mangaPage)
+                                    adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
                             }
                         }
