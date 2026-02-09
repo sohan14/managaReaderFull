@@ -218,7 +218,7 @@ class MangaAnalyzer(private val context: Context) {
         }
         
         DebugLogger.log(TAG, "Created ${chunks.size} pages (one REAL panel per page)")
-        DebugLogger.log(TAG, "Each panel starts at top of screen - next panel may peek at bottom (that's OK!)")
+        DebugLogger.log(TAG, "Each panel FILLS entire screen - no peeking next panel!")
         
         return chunks
     }

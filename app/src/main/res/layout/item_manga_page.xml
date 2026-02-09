@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Each panel shown naturally - starts at top, may not fill whole screen (next panel peeks at bottom - OK!) -->
+<!-- Each panel FILLS entire screen - no peeking next panel -->
 <com.github.chrisbanes.photoview.PhotoView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/mangaPageImage"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:adjustViewBounds="true"
-    android:scaleType="fitStart"
+    android:layout_height="match_parent"
+    android:scaleType="fitCenter"
     android:background="#000000" />
 
