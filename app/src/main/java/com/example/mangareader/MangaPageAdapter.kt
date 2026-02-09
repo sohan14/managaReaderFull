@@ -140,39 +140,53 @@ class MangaPageAdapter(
     
     /**
      * Auto-pan PhotoView to show current bubble being read
+     * IMPROVED: Waits for ViewHolder to be available
      */
     fun panToBubble(pageIndex: Int, bubbleIndex: Int, recyclerView: androidx.recyclerview.widget.RecyclerView) {
-        val viewHolder = recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
-        viewHolder?.let { holder ->
-            val page = pages[pageIndex]
-            if (bubbleIndex < page.speechBubbles.size) {
-                val bubble = page.speechBubbles[bubbleIndex]
-                val bubbleRect = bubble.boundingBox
-                
-                val photoView = holder.photoView
-                
-                // Post to ensure PhotoView is laid out
-                photoView.post {
-                    val viewHeight = photoView.height.toFloat()
-                    if (viewHeight <= 0) return@post
+        // Try multiple times to get ViewHolder (it might not be ready immediately after scroll)
+        var attempts = 0
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        
+        fun tryPan() {
+            val viewHolder = recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
+            
+            if (viewHolder != null) {
+                val page = pages[pageIndex]
+                if (bubbleIndex < page.speechBubbles.size) {
+                    val bubble = page.speechBubbles[bubbleIndex]
+                    val bubbleRect = bubble.boundingBox
                     
-                    // Get bubble center Y position
-                    val bubbleCenterY = bubbleRect.centerY().toFloat()
+                    val photoView = viewHolder.photoView
                     
-                    // Calculate target Y to center bubble on screen
-                    // We want bubble center at screen center
-                    val targetY = bubbleCenterY - (viewHeight / 2f)
-                    
-                    // Smoothly pan to show the bubble
-                    // setScale will pan to put the point at center
-                    photoView.setScale(
-                        1.0f,  // Keep zoom at 1.0 (fit to screen)
-                        photoView.width / 2f,  // X center (middle of screen)
-                        bubbleCenterY,  // Y position (bubble center)
-                        true  // Animate smoothly
-                    )
+                    // Ensure PhotoView is laid out
+                    photoView.post {
+                        val viewHeight = photoView.height.toFloat()
+                        val imageHeight = photoView.drawable?.intrinsicHeight?.toFloat() ?: 0f
+                        
+                        if (viewHeight > 0 && imageHeight > 0) {
+                            // Calculate bubble position in the image
+                            val bubbleCenterY = bubbleRect.centerY().toFloat()
+                            
+                            // Calculate scale to fit image to screen width
+                            val scale = photoView.width.toFloat() / photoView.drawable.intrinsicWidth.toFloat()
+                            
+                            // Pan to show bubble - using setScale with animate=true
+                            photoView.setScale(
+                                scale,  // Fit to width
+                                bubbleRect.centerX().toFloat(),  // X position (bubble center X)
+                                bubbleCenterY,  // Y position (bubble center Y) 
+                                true  // Animate smoothly
+                            )
+                        }
+                    }
                 }
+            } else if (attempts < 5) {
+                // ViewHolder not ready yet, try again in 100ms
+                attempts++
+                handler.postDelayed({ tryPan() }, 100)
             }
         }
+        
+        tryPan()
     }
 }

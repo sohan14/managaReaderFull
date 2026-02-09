@@ -454,12 +454,18 @@ class ReaderActivity : AppCompatActivity() {
                     // Highlight current bubble on the page
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
                     
-                    // CRITICAL: Pan to show current bubble on screen!
+                    // CRITICAL FIX: Two-step scroll
+                    // Step 1: Scroll RecyclerView to correct PAGE (chunk)
+                    recyclerView.smoothScrollToPosition(currentPageIndex)
+                    
+                    // Step 2: Wait for scroll to complete, then pan to bubble
+                    kotlinx.coroutines.delay(400)  // Wait for page scroll
+                    
+                    // Step 3: Pan PhotoView to show bubble within the page
                     adapter.panToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
                     
-                    // Delay based on scroll speed setting
-                    // scrollSpeedMultiplier: 0.3x = slow (1000ms), 1.0x = normal (300ms), 3.0x = fast (100ms)
-                    val panDelay = (300 / scrollSpeedMultiplier).toLong().coerceIn(100, 1000)
+                    // Step 4: Wait for pan animation
+                    val panDelay = (200 / scrollSpeedMultiplier).toLong().coerceIn(100, 500)
                     kotlinx.coroutines.delay(panDelay)
                     
                     // Speak the text
