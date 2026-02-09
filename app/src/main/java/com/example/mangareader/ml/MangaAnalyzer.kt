@@ -117,8 +117,58 @@ class MangaAnalyzer(private val context: Context) {
      * Split very tall images (webtoons) into manageable chunks for better OCR
      */
     /**
-     * Split tall webtoons into chunks for OCR processing (better detection)
-     * But we'll merge all bubbles and display as ONE continuous page
+     * Detect panel boundaries in webtoon by finding horizontal white/black separators
+     * Returns Y positions where panels start/end
+     */
+    private fun detectPanelBoundaries(bitmap: Bitmap): List<Int> {
+        val boundaries = mutableListOf<Int>()
+        boundaries.add(0) // Start
+        
+        DebugLogger.log(TAG, "Detecting panel boundaries by scanning for white space...")
+        
+        // Sample middle column to detect horizontal separators
+        val sampleX = bitmap.width / 2
+        val threshold = 200 // Brightness threshold for "white"
+        
+        var inWhiteSpace = false
+        var whiteSpaceStart = 0
+        val minWhiteSpaceHeight = 20 // Minimum pixels for a separator
+        
+        for (y in 0 until bitmap.height step 5) { // Sample every 5 pixels
+            val pixel = bitmap.getPixel(sampleX, y)
+            val r = (pixel shr 16) and 0xFF
+            val g = (pixel shr 8) and 0xFF
+            val b = pixel and 0xFF
+            val brightness = (r + g + b) / 3
+            
+            val isWhite = brightness > threshold
+            
+            if (isWhite && !inWhiteSpace) {
+                // Start of white space
+                whiteSpaceStart = y
+                inWhiteSpace = true
+            } else if (!isWhite && inWhiteSpace) {
+                // End of white space
+                val whiteSpaceHeight = y - whiteSpaceStart
+                if (whiteSpaceHeight >= minWhiteSpaceHeight) {
+                    // This is a panel boundary!
+                    val boundaryY = whiteSpaceStart + (whiteSpaceHeight / 2)
+                    boundaries.add(boundaryY)
+                    DebugLogger.log(TAG, "  Panel boundary at Y=$boundaryY")
+                }
+                inWhiteSpace = false
+            }
+        }
+        
+        boundaries.add(bitmap.height) // End
+        DebugLogger.log(TAG, "Found ${boundaries.size - 1} panels")
+        
+        return boundaries
+    }
+    
+    /**
+     * Split webtoon at panel boundaries for perfect story continuity
+     * Each chunk contains complete panels (no mid-panel cuts)
      */
     private fun splitIntoChunks(bitmap: Bitmap, screenHeight: Int): List<Bitmap> {
         val chunks = mutableListOf<Bitmap>()
@@ -132,27 +182,38 @@ class MangaAnalyzer(private val context: Context) {
             return chunks
         }
         
-        // Very tall webtoon - split into chunks for OCR accuracy
+        // Very tall webtoon - detect panel boundaries!
         DebugLogger.log(TAG, "Very tall webtoon detected (aspect ${String.format("%.1f", aspectRatio)})")
-        DebugLogger.log(TAG, "Splitting into chunks for accurate OCR, then merging for continuous display...")
+        DebugLogger.log(TAG, "Detecting panel boundaries for natural chunking...")
         
-        // Use reasonable chunk size for OCR (not too big to cause memory issues)
-        val chunkHeight = bitmap.width * 4  // 4:1 aspect ratio per chunk
-        val numChunks = (bitmap.height + chunkHeight - 1) / chunkHeight
+        val panelBoundaries = detectPanelBoundaries(bitmap)
         
-        DebugLogger.log(TAG, "Splitting ${bitmap.height}px tall image into $numChunks chunks for OCR")
-        DebugLogger.log(TAG, "Will merge all bubbles into single continuous page after detection")
+        // Group panels into chunks (max ~15000px per chunk for memory safety)
+        val maxChunkHeight = 15000
+        var chunkStart = 0
         
-        for (i in 0 until numChunks) {
-            val startY = i * chunkHeight
-            val endY = kotlin.math.min(startY + chunkHeight, bitmap.height)
-            val actualHeight = endY - startY
+        for (i in 1 until panelBoundaries.size) {
+            val panelEnd = panelBoundaries[i]
+            val chunkHeight = panelEnd - chunkStart
             
-            val chunk = Bitmap.createBitmap(bitmap, 0, startY, bitmap.width, actualHeight)
-            chunks.add(chunk)
-            
-            DebugLogger.log(TAG, "OCR Chunk $i: ${bitmap.width} x $actualHeight (${bitmap.width * actualHeight} pixels)")
+            // If adding this panel would make chunk too big, or it's the last panel
+            if (chunkHeight > maxChunkHeight || i == panelBoundaries.size - 1) {
+                // Create chunk up to this point
+                val endY = if (chunkHeight > maxChunkHeight) panelBoundaries[i-1] else panelEnd
+                val actualHeight = endY - chunkStart
+                
+                if (actualHeight > 0) {
+                    val chunk = Bitmap.createBitmap(bitmap, 0, chunkStart, bitmap.width, actualHeight)
+                    chunks.add(chunk)
+                    DebugLogger.log(TAG, "Panel chunk: Y=$chunkStart to $endY (${actualHeight}px)")
+                    
+                    chunkStart = endY
+                }
+            }
         }
+        
+        DebugLogger.log(TAG, "Created ${chunks.size} chunks from ${panelBoundaries.size - 1} panels")
+        DebugLogger.log(TAG, "Will merge all bubbles into single continuous page after detection")
         
         return chunks
     }

@@ -347,25 +347,29 @@ class ReaderActivity : AppCompatActivity() {
                                     adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
                             } else {
-                                // Tall webtoon - was chunked for OCR
+                                // Tall webtoon - was chunked at panel boundaries for OCR
                                 // MERGE all bubbles into ONE continuous page!
-                                Log.d(TAG, "Page $index: Merging ${analysisResult.pages.size} OCR chunks into single continuous page")
+                                Log.d(TAG, "Page $index: Merging ${analysisResult.pages.size} panel chunks into single continuous page")
                                 
                                 val allBubbles = mutableListOf<SpeechBubble>()
-                                var chunkOffsetY = 0
+                                var cumulativeOffsetY = 0
                                 
                                 analysisResult.pages.forEachIndexed { chunkIdx, pageData ->
-                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles at Y offset $chunkOffsetY")
+                                    Log.d(TAG, "  Chunk $chunkIdx: Found ${pageData.speechBubbles.size} bubbles at Y offset $cumulativeOffsetY")
                                     
-                                    // Adjust bubble Y positions for their offset in the full image
+                                    // Calculate scaling factor from processed chunk to original
+                                    val scaleX = bitmap.width.toFloat() / pageData.bitmap.width.toFloat()
+                                    val scaleY = bitmap.width.toFloat() / pageData.bitmap.width.toFloat() // Use same scale
+                                    
+                                    // Adjust bubble positions: scale + cumulative offset
                                     pageData.speechBubbles.forEach { bubble ->
                                         val adjustedBubble = SpeechBubble(
                                             text = bubble.text,
                                             boundingBox = android.graphics.Rect(
-                                                bubble.boundingBox.left,
-                                                bubble.boundingBox.top + chunkOffsetY,
-                                                bubble.boundingBox.right,
-                                                bubble.boundingBox.bottom + chunkOffsetY
+                                                (bubble.boundingBox.left * scaleX).toInt(),
+                                                (bubble.boundingBox.top * scaleY).toInt() + cumulativeOffsetY,
+                                                (bubble.boundingBox.right * scaleX).toInt(),
+                                                (bubble.boundingBox.bottom * scaleY).toInt() + cumulativeOffsetY
                                             ),
                                             confidence = bubble.confidence,
                                             characterGender = bubble.characterGender,
@@ -374,7 +378,9 @@ class ReaderActivity : AppCompatActivity() {
                                         allBubbles.add(adjustedBubble)
                                     }
                                     
-                                    chunkOffsetY += pageData.bitmap.height
+                                    // Add this chunk's ORIGINAL height to cumulative offset
+                                    // (scale the processed height back to original dimensions)
+                                    cumulativeOffsetY += (pageData.bitmap.height * scaleY).toInt()
                                 }
                                 
                                 // Sort bubbles by Y position (top to bottom)

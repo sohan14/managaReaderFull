@@ -145,25 +145,26 @@ class MangaPageAdapter(
         val page = pages.getOrNull(pageIndex) ?: return
         val bubble = page.speechBubbles.getOrNull(bubbleIndex) ?: return
         
-        // Get layout manager
-        val layoutManager = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager ?: return
-        
-        // Scroll to the page first
-        layoutManager.scrollToPositionWithOffset(pageIndex, 0)
-        
-        // Then try to scroll to show the bubble
-        // Since it's a full webtoon, we need to calculate the pixel offset
         recyclerView.post {
-            val viewHolder = recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
-            if (viewHolder != null) {
-                // Calculate bubble position in the full image
-                val bubbleY = bubble.boundingBox.centerY()
-                val screenHeight = recyclerView.height
-                
-                // Scroll to center bubble on screen
-                val scrollOffset = bubbleY - (screenHeight / 2)
-                layoutManager.scrollToPositionWithOffset(pageIndex, -scrollOffset.toInt())
-            }
+            // Calculate where the bubble is in the full image
+            val bubbleY = bubble.boundingBox.centerY()
+            
+            // Get screen height to center bubble
+            val screenHeight = recyclerView.height
+            
+            // Calculate target scroll position (center bubble on screen)
+            val targetScrollY = bubbleY - (screenHeight / 2)
+            
+            // Get current scroll position
+            val currentScrollY = recyclerView.computeVerticalScrollOffset()
+            
+            // Calculate how much we need to scroll
+            val scrollAmount = targetScrollY - currentScrollY
+            
+            // Smooth scroll to the bubble
+            recyclerView.smoothScrollBy(0, scrollAmount)
+            
+            android.util.Log.d("MangaPageAdapter", "Scrolling to bubble at Y=$bubbleY (center at $targetScrollY), current=$currentScrollY, scrolling by $scrollAmount")
         }
     }
 }
