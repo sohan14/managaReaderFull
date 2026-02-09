@@ -196,33 +196,24 @@ class MangaAnalyzer(private val context: Context) {
         
         val panelBoundaries = detectPanelBoundaries(bitmap)
         
-        // Group panels into chunks (max ~7000px per chunk for readability)
-        // Smaller chunks = fewer panels per scene = bigger panels = easier to read!
-        val maxChunkHeight = 7000
-        var chunkStart = 0
+        // Don't group panels - make EACH panel its own screen!
+        // One panel per screen = maximum readability!
+        DebugLogger.log(TAG, "Creating ONE scene per panel for maximum readability...")
         
-        for (i in 1 until panelBoundaries.size) {
-            val panelEnd = panelBoundaries[i]
-            val chunkHeight = panelEnd - chunkStart
+        for (i in 0 until panelBoundaries.size - 1) {
+            val panelStart = panelBoundaries[i]
+            val panelEnd = panelBoundaries[i + 1]
+            val panelHeight = panelEnd - panelStart
             
-            // If adding this panel would make chunk too big, or it's the last panel
-            if (chunkHeight > maxChunkHeight || i == panelBoundaries.size - 1) {
-                // Create chunk up to this point
-                val endY = if (chunkHeight > maxChunkHeight) panelBoundaries[i-1] else panelEnd
-                val actualHeight = endY - chunkStart
-                
-                if (actualHeight > 0) {
-                    val chunkBitmap = Bitmap.createBitmap(bitmap, 0, chunkStart, bitmap.width, actualHeight)
-                    chunks.add(ChunkInfo(chunkBitmap, chunkStart))  // Track original Y offset!
-                    DebugLogger.log(TAG, "Panel chunk: Y=$chunkStart to $endY (${actualHeight}px)")
-                    
-                    chunkStart = endY
-                }
+            if (panelHeight > 0) {
+                val chunkBitmap = Bitmap.createBitmap(bitmap, 0, panelStart, bitmap.width, panelHeight)
+                chunks.add(ChunkInfo(chunkBitmap, panelStart))
+                DebugLogger.log(TAG, "Panel ${i + 1}: Y=$panelStart to $panelEnd (${panelHeight}px)")
             }
         }
         
-        DebugLogger.log(TAG, "Created ${chunks.size} chunks from ${panelBoundaries.size - 1} panels")
-        DebugLogger.log(TAG, "Will merge all bubbles into single continuous page after detection")
+        DebugLogger.log(TAG, "Created ${chunks.size} scenes (one panel per screen)")
+        DebugLogger.log(TAG, "Each panel will be its own page for maximum readability!")
         
         return chunks
     }
