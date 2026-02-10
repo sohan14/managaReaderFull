@@ -1,16 +1,20 @@
 package com.example.mangareader
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.net.Uri
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.mangareader.model.MangaPage
 import com.github.chrisbanes.photoview.PhotoView
+import java.io.IOException
 import kotlin.math.min
 
 /**
@@ -19,6 +23,10 @@ import kotlin.math.min
 class MangaPageAdapter(
     private val pages: List<MangaPage>
 ) : RecyclerView.Adapter<MangaPageAdapter.PageViewHolder>() {
+
+    companion object {
+        private const val TAG = "MangaPageAdapter"
+    }
 
     private var highlightedPage = -1
     private var highlightedBubble = -1
@@ -35,23 +43,10 @@ class MangaPageAdapter(
 
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
         val page = pages[position]
-        
+
         // Load and SCALE the manga page image to prevent crashes
-        val bitmap = try {
-            val fullBitmap = BitmapFactory.decodeFile(page.imagePath)
-            if (fullBitmap != null) {
-                scaleBitmapForDisplay(fullBitmap)
-            } else null
-        } catch (e: Exception) {
-            // Try assets
-            try {
-                holder.itemView.context.assets.open(page.imagePath).use { inputStream ->
-                    val fullBitmap = BitmapFactory.decodeStream(inputStream)
-                    scaleBitmapForDisplay(fullBitmap)
-                }
-            } catch (e: Exception) {
-                null
-            }
+        val bitmap = loadBitmap(holder.itemView.context, page.imagePath)?.let { fullBitmap ->
+            scaleBitmapForDisplay(fullBitmap)
         }
         
         if (bitmap != null) {
@@ -86,6 +81,32 @@ class MangaPageAdapter(
             } else {
                 holder.photoView.setImageBitmap(bitmap)
             }
+        }
+    }
+
+    private fun loadBitmap(context: Context, path: String): Bitmap? {
+        if (path.isBlank()) return null
+
+        // Standard file path
+        BitmapFactory.decodeFile(path)?.let { return it }
+
+        // Content URI (typical from Storage Access Framework)
+        try {
+            context.contentResolver.openInputStream(Uri.parse(path))?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)?.let { return it }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to open content URI: $path", e)
+        }
+
+        // Demo asset fallback
+        return try {
+            context.assets.open(path).use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        } catch (_: IOException) {
+            Log.w(TAG, "Unable to load image from file/content URI/asset: $path")
+            null
         }
     }
     
