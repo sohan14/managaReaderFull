@@ -316,32 +316,37 @@ class ReaderActivity : AppCompatActivity() {
                         }
                         
                         if (bitmap != null) {
-                            // Check if this is a tall continuous webtoon
-                            val aspectRatio = bitmap.height.toFloat() / bitmap.width
-                            val isContinuousWebtoon = aspectRatio > 5.0f
+                            Log.d(TAG, "")
+                            Log.d(TAG, "=== LOADED IMAGE $index ===")
+                            Log.d(TAG, "Path: $path")
+                            Log.d(TAG, "Bitmap: ${bitmap.width} x ${bitmap.height}")
                             
-                            Log.d(TAG, "Bitmap: ${bitmap.width} x ${bitmap.height}, aspect ratio: $aspectRatio")
+                            // Check if this is a tall continuous webtoon (single big image OR many small images)
+                            val aspectRatio = bitmap.height.toFloat() / bitmap.width
+                            val isContinuousWebtoon = aspectRatio > 5.0f || imagePaths.size > 10
+                            
+                            Log.d(TAG, "Aspect ratio: $aspectRatio")
+                            Log.d(TAG, "Total images: ${imagePaths.size}")
+                            Log.d(TAG, "Is webtoon? $isContinuousWebtoon")
+                            Log.d(TAG, "")
                             
                             if (isContinuousWebtoon) {
-                                Log.d(TAG, "")
-                                Log.d(TAG, "✅ CONTINUOUS WEBTOON DETECTED!")
-                                Log.d(TAG, "Aspect ratio: $aspectRatio (> 5.0)")
-                                Log.d(TAG, "SKIPPING all upfront OCR")
-                                Log.d(TAG, "Will OCR viewports on-demand during playback")
-                                Log.d(TAG, "")
+                                Log.d(TAG, "✅ WEBTOON IMAGE - Skipping OCR")
                                 
-                                // Create ONE page with NO bubbles
-                                // Bubbles will be detected viewport-by-viewport during playback
+                                // Create page with NO bubbles (will OCR on-demand during playback)
                                 val mangaPage = MangaPage(
-                                    pageNumber = 0,
+                                    pageNumber = mangaPages.size,
                                     imagePath = path,
-                                    speechBubbles = emptyList() // Empty!
+                                    speechBubbles = emptyList()
                                 )
                                 
-                                mangaPages.add(mangaPage)
-                                bitmap.recycle()
+                                withContext(Dispatchers.Main) {
+                                    mangaPages.add(mangaPage)
+                                    adapter.notifyItemInserted(mangaPages.size - 1)
+                                }
                                 
-                                Log.d(TAG, "Webtoon page created (no OCR)")
+                                bitmap.recycle()
+                                Log.d(TAG, "Page added to RecyclerView (no OCR)")
                                 
                             } else {
                                 // Normal manga page - run full OCR
@@ -678,8 +683,37 @@ class ReaderActivity : AppCompatActivity() {
                 while (isPlaying && currentPageIndex < mangaPages.size) {
                     val currentPage = mangaPages[currentPageIndex]
                     
-                    if (currentBubbleIndex < currentPage.speechBubbles.size) {
-                        val bubble = currentPage.speechBubbles[currentBubbleIndex]
+                    // If page has no bubbles (webtoon mode), OCR it now!
+                    if (currentPage.speechBubbles.isEmpty()) {
+                        Log.d(TAG, "")
+                        Log.d(TAG, "📄 Page $currentPageIndex has no bubbles - OCR-ing now...")
+                        
+                        val bitmap = BitmapFactory.decodeFile(currentPage.imagePath)
+                        if (bitmap != null) {
+                            val screenHeight = resources.displayMetrics.heightPixels
+                            val analysisResult = mangaAnalyzer.analyzePage(bitmap, screenHeight)
+                            
+                            // Update page with detected bubbles
+                            val bubbles = analysisResult.pages.flatMap { it.speechBubbles }
+                            val updatedPage = currentPage.copy(speechBubbles = bubbles)
+                            mangaPages[currentPageIndex] = updatedPage
+                            
+                            Log.d(TAG, "  Found ${bubbles.size} bubbles")
+                            
+                            bitmap.recycle()
+                        } else {
+                            Log.d(TAG, "  ERROR: Could not load bitmap!")
+                            // Skip to next page
+                            currentPageIndex++
+                            continue
+                        }
+                    }
+                    
+                    // Now read bubbles in this page
+                    val pageWithBubbles = mangaPages[currentPageIndex]
+                    
+                    if (currentBubbleIndex < pageWithBubbles.speechBubbles.size) {
+                        val bubble = pageWithBubbles.speechBubbles[currentBubbleIndex]
                         
                         // Update status with emotion indicator
                         val emotionIcon = when (bubble.emotion) {
