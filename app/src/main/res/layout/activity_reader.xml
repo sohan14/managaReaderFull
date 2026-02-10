@@ -9,11 +9,32 @@
     android:background="#000000"
     tools:context=".ReaderActivity">
 
-    <!-- FULLSCREEN Manga pages RecyclerView - Takes entire screen -->
+    <!-- CONTINUOUS WEBTOON: ScrollView for smooth vertical scrolling -->
+    <ScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+        
+        <com.github.chrisbanes.photoview.PhotoView
+            android:id="@+id/webtoonImage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            android:scaleType="fitStart"
+            android:background="#000000" />
+    </ScrollView>
+
+    <!-- RecyclerView hidden for continuous mode -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"

@@ -37,6 +37,8 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     private lateinit var recyclerView: RecyclerView
+    private lateinit var scrollView: android.widget.ScrollView
+    private lateinit var webtoonImage: com.github.chrisbanes.photoview.PhotoView
     private lateinit var playPauseButton: FloatingActionButton
     private lateinit var speedSeekBar: SeekBar
     private lateinit var speedLabel: TextView
@@ -49,6 +51,8 @@ class ReaderActivity : AppCompatActivity() {
     private lateinit var adapter: MangaPageAdapter
     
     private val mangaPages = mutableListOf<MangaPage>()
+    private val allBubbles = mutableListOf<SpeechBubble>()  // For continuous mode
+    private var isContinuousMode = false  // true = ScrollView, false = RecyclerView
     private var currentPageIndex = 0
     private var isPlaying = false
     private var currentBubbleIndex = 0
@@ -84,6 +88,8 @@ class ReaderActivity : AppCompatActivity() {
 
     private fun initViews() {
         recyclerView = findViewById(R.id.recyclerView)
+        scrollView = findViewById(R.id.scrollView)
+        webtoonImage = findViewById(R.id.webtoonImage)
         playPauseButton = findViewById(R.id.playPauseButton)
         speedSeekBar = findViewById(R.id.speedSeekBar)
         speedLabel = findViewById(R.id.speedLabel)
@@ -104,16 +110,13 @@ class ReaderActivity : AppCompatActivity() {
         val scrollSpeedSeekBar = findViewById<SeekBar>(R.id.scrollSpeedSeekBar)
         val scrollSpeedLabel = findViewById<TextView>(R.id.scrollSpeedLabel)
         
-        // Setup RecyclerView for SCENE-BASED webtoon reading
-        // Each page = one scene (panel-based chunk) that fits on screen
+        // Setup RecyclerView (for multi-page mode)
         val layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
         recyclerView.layoutManager = layoutManager
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
-        // Free continuous scrolling - no snapping
-        // Auto-play will scroll to each bubble naturally
-        DebugLogger.log(TAG, "Continuous scrolling enabled - bubbles will scroll into view before reading")
+        DebugLogger.log(TAG, "Views initialized - will detect mode after loading pages")
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -387,8 +390,37 @@ class ReaderActivity : AppCompatActivity() {
                 
                 progressBar.visibility = View.GONE
                 
+                // Check if continuous mode (1 page with many bubbles)
+                if (mangaPages.size == 1 && mangaPages[0].speechBubbles.isNotEmpty()) {
+                    isContinuousMode = true
+                    allBubbles.addAll(mangaPages[0].speechBubbles)
+                    
+                    Log.d(TAG, "CONTINUOUS MODE DETECTED")
+                    Log.d(TAG, "  1 page with ${allBubbles.size} bubbles")
+                    Log.d(TAG, "  Switching to ScrollView for smooth scrolling")
+                    
+                    // Load image into PhotoView
+                    val bitmap = BitmapFactory.decodeFile(mangaPages[0].imagePath)
+                    webtoonImage.setImageBitmap(bitmap)
+                    
+                    // Show ScrollView, hide RecyclerView
+                    scrollView.visibility = View.VISIBLE
+                    recyclerView.visibility = View.GONE
+                    
+                    DebugLogger.log(TAG, "Continuous webtoon loaded - ${allBubbles.size} bubbles ready")
+                } else {
+                    isContinuousMode = false
+                    
+                    Log.d(TAG, "MULTI-PAGE MODE")
+                    Log.d(TAG, "  ${mangaPages.size} pages")
+                    
+                    // Show RecyclerView, hide ScrollView
+                    scrollView.visibility = View.GONE
+                    recyclerView.visibility = View.VISIBLE
+                }
+                
                 // Count total bubbles
-                val totalBubbles = mangaPages.sumOf { it.speechBubbles.size }
+                val totalBubbles = if (isContinuousMode) allBubbles.size else mangaPages.sumOf { it.speechBubbles.size }
                 Log.d(TAG, "=== FINAL RESULT: ${mangaPages.size} pages, $totalBubbles total bubbles ===")
                 
                 statusText.text = if (totalBubbles > 0) {
@@ -456,11 +488,12 @@ class ReaderActivity : AppCompatActivity() {
         scrollSpeedCard.visibility = View.VISIBLE
         
         lifecycleScope.launch {
-            while (isPlaying && currentPageIndex < mangaPages.size) {
-                val currentPage = mangaPages[currentPageIndex]
+            if (isContinuousMode) {
+                // CONTINUOUS MODE: Scroll through one big webtoon
+                DebugLogger.log(TAG, "Starting continuous mode narration")
                 
-                if (currentBubbleIndex < currentPage.speechBubbles.size) {
-                    val bubble = currentPage.speechBubbles[currentBubbleIndex]
+                while (isPlaying && currentBubbleIndex < allBubbles.size) {
+                    val bubble = allBubbles[currentBubbleIndex]
                     
                     // Update status with emotion indicator
                     val emotionIcon = when (bubble.emotion) {
@@ -473,45 +506,89 @@ class ReaderActivity : AppCompatActivity() {
                     }
                     val statusMessage = "$emotionIcon ${bubble.text.take(30)}..."
                     statusText.text = statusMessage
-                    miniStatusText.text = statusMessage  // Also update mini status
+                    miniStatusText.text = statusMessage
                     
-                    // CRITICAL: SCROLL TO BUBBLE FIRST, THEN READ!
-                    // 1. Scroll to make bubble visible
-                    adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
+                    // CRITICAL: SCROLL TO BUBBLE FIRST!
+                    val bubbleY = bubble.boundingBox.centerY()
+                    val screenHeight = scrollView.height
+                    val targetY = (bubbleY - screenHeight / 2).toInt().coerceAtLeast(0)
                     
-                    // 2. Wait for scroll to complete
+                    DebugLogger.log(TAG, "Scrolling to bubble $currentBubbleIndex at Y=$bubbleY (target scroll=$targetY)")
+                    
+                    withContext(Dispatchers.Main) {
+                        scrollView.smoothScrollTo(0, targetY)
+                    }
+                    
+                    // Wait for scroll to complete
                     kotlinx.coroutines.delay(500)
                     
-                    // 3. Highlight current bubble
-                    adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
-                    
-                    // 4. NOW speak the text (bubble is visible!)
+                    // NOW read the bubble
                     val success = ttsManager.speak(bubble)
                     
                     if (success) {
                         currentBubbleIndex++
                     } else {
-                        // TTS failed, skip to next
                         currentBubbleIndex++
                     }
-                } else {
-                    // Move to next page
-                    currentBubbleIndex = 0
-                    currentPageIndex++
+                }
+                
+                // Finished
+                isPlaying = false
+                playPauseButton.setImageResource(android.R.drawable.ic_media_play)
+                statusText.text = "Finished reading webtoon"
+                currentBubbleIndex = 0
+                
+            } else {
+                // MULTI-PAGE MODE: Use RecyclerView
+                while (isPlaying && currentPageIndex < mangaPages.size) {
+                    val currentPage = mangaPages[currentPageIndex]
                     
-                    if (currentPageIndex < mangaPages.size) {
-                        // Smooth scroll to next page
-                        recyclerView.smoothScrollToPosition(currentPageIndex)
+                    if (currentBubbleIndex < currentPage.speechBubbles.size) {
+                        val bubble = currentPage.speechBubbles[currentBubbleIndex]
                         
-                        // Brief pause between pages
-                        kotlinx.coroutines.delay(800)
+                        // Update status with emotion indicator
+                        val emotionIcon = when (bubble.emotion) {
+                            Emotion.HAPPY -> "😊"
+                            Emotion.SAD -> "😢"
+                            Emotion.ANGRY -> "😠"
+                            Emotion.SURPRISED -> "😲"
+                            Emotion.SCARED -> "😰"
+                            Emotion.NEUTRAL -> "💬"
+                        }
+                        val statusMessage = "$emotionIcon ${bubble.text.take(30)}..."
+                        statusText.text = statusMessage
+                        miniStatusText.text = statusMessage
+                        
+                        // Scroll to bubble first
+                        adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
+                        kotlinx.coroutines.delay(500)
+                        
+                        // Highlight bubble
+                        adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
+                        
+                        // Speak the text
+                        val success = ttsManager.speak(bubble)
+                        
+                        if (success) {
+                            currentBubbleIndex++
+                        } else {
+                            currentBubbleIndex++
+                        }
                     } else {
-                        // Finished reading all pages
-                        isPlaying = false
-                        playPauseButton.setImageResource(android.R.drawable.ic_media_play)
-                        statusText.text = "Finished reading manga"
-                        currentPageIndex = 0
-                        break
+                        // Move to next page
+                        currentBubbleIndex = 0
+                        currentPageIndex++
+                        
+                        if (currentPageIndex < mangaPages.size) {
+                            recyclerView.smoothScrollToPosition(currentPageIndex)
+                            kotlinx.coroutines.delay(800)
+                        } else {
+                            isPlaying = false
+                            playPauseButton.setImageResource(android.R.drawable.ic_media_play)
+                            statusText.text = "Finished reading manga"
+                            currentPageIndex = 0
+                            break
+                        }
                     }
                 }
             }
