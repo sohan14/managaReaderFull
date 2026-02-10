@@ -338,8 +338,7 @@ class ReaderActivity : AppCompatActivity() {
                                 val mangaPage = MangaPage(
                                     pageNumber = mangaPages.size,
                                     imagePath = path,
-                                    speechBubbles = emptyList(), // Empty - will OCR viewports during playback
-                                    bitmap = null
+                                    speechBubbles = emptyList() // Empty - will OCR viewports during playback
                                 )
                                 
                                 mangaPages.add(mangaPage)
@@ -348,9 +347,25 @@ class ReaderActivity : AppCompatActivity() {
                             } else {
                                 Log.d(TAG, "Normal manga page - running full OCR")
                                 
-                                withContext(Dispatchers.Main) {
+                                // Get screen height for optimal chunking
+                                val screenHeight = recyclerView.height
+                                val chunkHeight = if (screenHeight > 0) {
+                                    screenHeight
+                                } else {
+                                    resources.displayMetrics.heightPixels
+                                }
+                                
+                                val analysisResult = mangaAnalyzer.analyzePage(bitmap, chunkHeight)
+                                
+                                // Add all detected pages
+                                analysisResult.pages.forEach { pageData ->
+                                    val mangaPage = MangaPage(
+                                        pageNumber = mangaPages.size,
+                                        imagePath = path,
+                                        speechBubbles = pageData.speechBubbles
+                                    )
+                                    
                                     mangaPages.add(mangaPage)
-                                    adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
                                 
                                 bitmap.recycle()
