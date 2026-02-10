@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import kotlin.math.roundToInt
 
 /**
  * Main reading activity with auto-narration and scrolling
@@ -539,13 +540,27 @@ class ReaderActivity : AppCompatActivity() {
                 
                 val screenHeight = scrollView.height
                 scrollView.scrollTo(0, 0) // Start at top
-                
+
                 Log.d(TAG, "Screen height: $screenHeight px")
-                
-                var currentScrollY = 0
+
+                val imageBounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(mangaPages[0].imagePath, imageBounds)
+                val sourceImageHeight = imageBounds.outHeight
+
+                if (sourceImageHeight <= 0) {
+                    Log.e(TAG, "Failed to get source image dimensions")
+                    isPlaying = false
+                    return@launch
+                }
+
+                val contentHeight = webtoonImage.height.coerceAtLeast(screenHeight)
+                val maxScrollY = (contentHeight - screenHeight).coerceAtLeast(0)
+                val seenBubbleKeys = mutableSetOf<String>()
                 var totalBubblesRead = 0
                 
                 while (isPlaying) {
+                    val currentScrollY = scrollView.scrollY.coerceAtLeast(0)
+
                     Log.d(TAG, "")
                     Log.d(TAG, "┌─────────────────────────────────────┐")
                     Log.d(TAG, "│  OCR-ING VIEWPORT at Y=$currentScrollY")
@@ -558,10 +573,22 @@ class ReaderActivity : AppCompatActivity() {
                         break
                     }
                     
+                    // Map current on-screen viewport to source image coordinates
+                    val startYOnImage = if (maxScrollY == 0) {
+                        0
+                    } else {
+                        ((currentScrollY.toFloat() / maxScrollY) * (sourceImageHeight - screenHeight).coerceAtLeast(0)).roundToInt()
+                    }
+                    val viewportHeightOnImage = if (contentHeight == 0) {
+                        screenHeight
+                    } else {
+                        ((screenHeight.toFloat() / contentHeight) * sourceImageHeight).roundToInt().coerceAtLeast(1)
+                    }
+
                     // Calculate visible region (with some overlap for bubbles on edge)
                     val overlap = 300 // px overlap to catch bubbles on edges
-                    val startY = (currentScrollY - overlap).coerceAtLeast(0)
-                    val endY = (currentScrollY + screenHeight + overlap).coerceAtMost(originalBitmap.height)
+                    val startY = (startYOnImage - overlap).coerceAtLeast(0)
+                    val endY = (startYOnImage + viewportHeightOnImage + overlap).coerceAtMost(originalBitmap.height)
                     val viewportHeight = endY - startY
                     
                     Log.d(TAG, "Viewport: Y=$startY to Y=$endY (height=$viewportHeight px)")
@@ -598,11 +625,16 @@ class ReaderActivity : AppCompatActivity() {
                             
                             // Only include bubbles in current viewport (not overlap area)
                             val bubbleY = adjustedBubble.boundingBox.centerY()
-                            if (bubbleY >= currentScrollY && bubbleY < currentScrollY + screenHeight) {
+                            val bubbleKey = "${adjustedBubble.text}_${adjustedBubble.boundingBox.left}_${adjustedBubble.boundingBox.top}_${adjustedBubble.boundingBox.right}_${adjustedBubble.boundingBox.bottom}"
+
+                            if (bubbleY >= startYOnImage && bubbleY < startYOnImage + viewportHeightOnImage && !seenBubbleKeys.contains(bubbleKey)) {
+                                seenBubbleKeys.add(bubbleKey)
                                 viewportBubbles.add(adjustedBubble)
                             }
                         }
                     }
+
+                    viewportBubbles.sortBy { it.boundingBox.centerY() }
                     
                     Log.d(TAG, "Found ${viewportBubbles.size} bubbles in viewport")
                     
@@ -639,28 +671,24 @@ class ReaderActivity : AppCompatActivity() {
                         }
                     }
                     
-                    // Scroll down to next viewport
-                    currentScrollY += screenHeight
-                    
                     // Check if we've reached the bottom
-                    if (currentScrollY >= mangaPages[0].run {
-                        val bmp = loadBitmapFromPath(imagePath)
-                        val h = bmp?.height ?: 0
-                        bmp?.recycle()
-                        h
-                    }) {
+                    if (currentScrollY >= maxScrollY) {
                         Log.d(TAG, "Reached bottom of webtoon!")
                         break
                     }
+
+                    // Scroll down to next viewport only after this viewport is fully read
+                    val nextScrollY = (currentScrollY + screenHeight).coerceAtMost(maxScrollY)
                     
                     Log.d(TAG, "")
-                    Log.d(TAG, "⬇️ Scrolling to next viewport (Y=$currentScrollY)")
+                    Log.d(TAG, "⬇️ Scrolling to next viewport (Y=$nextScrollY)")
                     
                     withContext(Dispatchers.Main) {
-                        scrollView.smoothScrollTo(0, currentScrollY)
+                        scrollView.smoothScrollTo(0, nextScrollY)
                     }
                     
-                    kotlinx.coroutines.delay(800) // Wait for scroll
+                    val scrollDelayMs = (800 / scrollSpeedMultiplier).toLong().coerceIn(250L, 2000L)
+                    kotlinx.coroutines.delay(scrollDelayMs)
                 }
                 
                 // Finished
