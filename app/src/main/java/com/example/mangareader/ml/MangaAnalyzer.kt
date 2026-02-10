@@ -190,25 +190,31 @@ class MangaAnalyzer(private val context: Context) {
             return chunks
         }
         
-        // Very tall webtoon - detect panel boundaries!
+        // Very tall webtoon - chunk for OCR processing (text too small otherwise)
+        // But still combine into one continuous scrollable image for display
         DebugLogger.log(TAG, "Very tall webtoon detected (aspect ${String.format("%.1f", aspectRatio)})")
-        DebugLogger.log(TAG, "Detecting panel boundaries for natural chunking...")
+        DebugLogger.log(TAG, "Chunking for OCR processing (better text detection)...")
         
-        val panelBoundaries = detectPanelBoundaries(bitmap)
+        // Chunk into smaller pieces for OCR (7000px each)
+        val maxChunkHeight = 7000
+        var currentY = 0
         
-        // SIMPLE APPROACH: Use original continuous webtoon - NO chunking!
-        // Just one big scrollable image
-        DebugLogger.log(TAG, "Using original continuous webtoon - no cuts, no panels")
+        while (currentY < bitmap.height) {
+            val remainingHeight = bitmap.height - currentY
+            val chunkHeight = kotlin.math.min(maxChunkHeight, remainingHeight)
+            
+            if (chunkHeight > 0) {
+                val chunkBitmap = Bitmap.createBitmap(bitmap, 0, currentY, bitmap.width, chunkHeight)
+                chunks.add(ChunkInfo(chunkBitmap, currentY))
+                DebugLogger.log(TAG, "  Chunk ${chunks.size}: Y=$currentY, H=${chunkHeight}px")
+                currentY += chunkHeight
+            } else {
+                break
+            }
+        }
         
-        val originalBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height)
-        chunks.add(ChunkInfo(originalBitmap, 0))
-        
-        DebugLogger.log(TAG, "Single continuous page: ${bitmap.width}x${bitmap.height}px")
-        
-        DebugLogger.log(TAG, "=== FINAL RESULT ===")
-        DebugLogger.log(TAG, "Continuous webtoon - natural flow, no cuts")
-        DebugLogger.log(TAG, "Auto-play: Scroll to bubble FIRST → Then read")
-        DebugLogger.log(TAG, "Zoom: Fills width properly")
+        DebugLogger.log(TAG, "Created ${chunks.size} chunks for OCR (better text detection)")
+        DebugLogger.log(TAG, "Will display as ONE continuous webtoon with scroll-before-read")
         
         return chunks
     }
@@ -291,13 +297,31 @@ class MangaAnalyzer(private val context: Context) {
             // CRITICAL FIX: Sort bubbles by Y position (top to bottom reading order)
             chunkBubbles = chunkBubbles.sortedBy { it.boundingBox.top }
             
-            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: ${chunkBubbles.size} speech bubbles detected")
-            chunkBubbles.forEachIndexed { idx, bubble ->
+            // CRITICAL: Adjust bubble coordinates by originalYOffset
+            // Bubbles are detected in chunk coordinates (0-7000px)
+            // Need to adjust to full image coordinates
+            val adjustedBubbles = chunkBubbles.map { bubble ->
+                val adjustedBox = Rect(
+                    bubble.boundingBox.left,
+                    bubble.boundingBox.top + chunkInfo.originalYOffset,
+                    bubble.boundingBox.right,
+                    bubble.boundingBox.bottom + chunkInfo.originalYOffset
+                )
+                SpeechBubble(
+                    text = bubble.text,
+                    boundingBox = adjustedBox,
+                    gender = bubble.gender,
+                    emotion = bubble.emotion
+                )
+            }
+            
+            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: ${adjustedBubbles.size} speech bubbles detected")
+            adjustedBubbles.forEachIndexed { idx, bubble ->
                 DebugLogger.log(TAG, "  Bubble $idx (Y=${bubble.boundingBox.top}): '${bubble.text.take(30)}...'")
             }
             
-            // Create a page for this chunk WITH original Y offset
-            pages.add(PageData(chunkInfo.bitmap, chunkBubbles, chunkInfo.originalYOffset))
+            // Create a page for this chunk WITH adjusted bubbles
+            pages.add(PageData(chunkInfo.bitmap, adjustedBubbles, chunkInfo.originalYOffset))
         }
         
         DebugLogger.log(TAG, "=== OCR Analysis Complete ===")

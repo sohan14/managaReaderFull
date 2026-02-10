@@ -353,31 +353,32 @@ class ReaderActivity : AppCompatActivity() {
                                     adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
                             } else {
-                                // Tall webtoon chunked into scenes at panel boundaries
-                                // Each chunk = one page to display
-                                Log.d(TAG, "Page $index: Webtoon with ${analysisResult.pages.size} scenes (panel-based chunks)")
+                                // Tall webtoon chunked for OCR processing
+                                // Combine all chunks into ONE continuous page!
+                                Log.d(TAG, "Page $index: Webtoon with ${analysisResult.pages.size} OCR chunks - combining into one continuous page")
                                 
-                                analysisResult.pages.forEachIndexed { chunkIdx, pageData ->
-                                    Log.d(TAG, "  Scene $chunkIdx: Found ${pageData.speechBubbles.size} bubbles")
+                                // Combine all speech bubbles from all chunks
+                                val allBubbles = mutableListOf<SpeechBubble>()
+                                analysisResult.pages.forEach { pageData ->
+                                    Log.d(TAG, "  Chunk at Y=${pageData.originalYOffset}: Found ${pageData.speechBubbles.size} bubbles")
                                     
-                                    // Save this scene's bitmap
-                                    val sceneFile = File(cacheDir, "scene_${index}_${chunkIdx}.jpg")
-                                    sceneFile.outputStream().use { out ->
-                                        pageData.bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                                    }
-                                    
-                                    // Create a page for this scene
-                                    val mangaPage = MangaPage(
-                                        pageNumber = mangaPages.size,
-                                        imagePath = sceneFile.absolutePath,
-                                        speechBubbles = pageData.speechBubbles,
-                                        isProcessed = true
-                                    )
-                                    
-                                    withContext(Dispatchers.Main) {
-                                        mangaPages.add(mangaPage)
-                                        adapter.notifyItemInserted(mangaPages.size - 1)
-                                    }
+                                    // Add bubbles with their original Y positions from the full image
+                                    allBubbles.addAll(pageData.speechBubbles)
+                                }
+                                
+                                Log.d(TAG, "Total bubbles from all chunks: ${allBubbles.size}")
+                                
+                                // Create ONE page with the original full image
+                                val mangaPage = MangaPage(
+                                    pageNumber = mangaPages.size,
+                                    imagePath = path,  // Original full webtoon image
+                                    speechBubbles = allBubbles,
+                                    isProcessed = true
+                                )
+                                
+                                withContext(Dispatchers.Main) {
+                                    mangaPages.add(mangaPage)
+                                    adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
                             }
                         }
