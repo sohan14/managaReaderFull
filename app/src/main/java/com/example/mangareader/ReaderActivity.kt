@@ -111,8 +111,11 @@ class ReaderActivity : AppCompatActivity() {
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
-        // Free scrolling between panels - no snapping
-        // User can scroll naturally between panels with black space in between
+        // CRITICAL: Snap to each panel - ONE panel per screen
+        // When user scrolls, it snaps to show next complete panel
+        val snapHelper = androidx.recyclerview.widget.PagerSnapHelper()
+        snapHelper.attachToRecyclerView(recyclerView)
+        DebugLogger.log(TAG, "PagerSnapHelper attached - one panel per screen")
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {

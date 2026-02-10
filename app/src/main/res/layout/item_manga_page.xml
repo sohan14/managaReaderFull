@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Separate panels - scroll freely, black space between panels OK -->
+<!-- ONE panel fills entire screen - only one panel visible at a time -->
 <com.github.chrisbanes.photoview.PhotoView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/mangaPageImage"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:adjustViewBounds="true"
+    android:layout_height="match_parent"
     android:scaleType="fitStart"
     android:background="#000000" />
 
