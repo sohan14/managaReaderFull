@@ -1,7 +1,6 @@
 package com.example.mangareader
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -26,7 +25,6 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.io.IOException
 
 /**
@@ -387,60 +385,56 @@ class ReaderActivity : AppCompatActivity() {
                 // ALWAYS use continuous mode for single-page documents
                 if (mangaPages.size == 1) {
                     isContinuousMode = true
+                    val singlePagePath = mangaPages[0].imagePath
                     
                     // For continuous webtoons, bubbles will be detected on-demand during playback
                     // For normal pages, bubbles are already detected
                     allBubbles.addAll(mangaPages[0].speechBubbles)
+
+                    // Always show the selected page image in continuous mode.
+                    // Previously we only loaded image when OCR pre-detected bubbles,
+                    // which caused a black screen for viewport-OCR webtoon mode.
+                    val originalBitmap = loadBitmapFromPath(singlePagePath)
+                    var displayScaleY = 1.0f
+                    if (originalBitmap != null) {
+                        val scaledBitmap = scaleBitmapForDisplay(originalBitmap)
+                        displayScaleY = scaledBitmap.height.toFloat() / originalBitmap.height
+
+                        webtoonImage.setImageBitmap(scaledBitmap)
+
+                        // Only recycle original bitmap. PhotoView now owns scaledBitmap.
+                        originalBitmap.recycle()
+                    } else {
+                        Log.e(TAG, "Failed to load image for continuous mode: $singlePagePath")
+                    }
                     
                     if (allBubbles.isEmpty()) {
                         Log.d(TAG, "✅ CONTINUOUS WEBTOON MODE - Viewport OCR")
                         Log.d(TAG, "Bubbles will be detected on-demand during playback")
-                        Log.d(TAG, "No upfront bitmap loading needed")
                     } else {
                         Log.d(TAG, "✅ SINGLE PAGE MODE - Using ScrollView")
                         Log.d(TAG, "Total bubbles: ${allBubbles.size}")
-                        
-                        // Load and scale bitmap for single page mode
-                        val originalBitmap = loadBitmapFromPath(mangaPages[0].imagePath)
-                        if (originalBitmap != null) {
-                            val scaledBitmap = scaleBitmapForDisplay(originalBitmap)
-                            
-                            // Save scaled bitmap to file
-                            val scaledFile = File(cacheDir, "webtoon_scaled.jpg")
-                            scaledFile.outputStream().use { out ->
-                                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                            }
-                            
-                            // Load into PhotoView
-                            val displayBitmap = BitmapFactory.decodeFile(scaledFile.absolutePath)
-                            webtoonImage.setImageBitmap(displayBitmap)
-                            
-                            // Scale bubble coordinates
-                            val scaleY = scaledBitmap.height.toFloat() / originalBitmap.height
-                            val scaledBubbles = allBubbles.map { bubble ->
-                                SpeechBubble(
-                                    text = bubble.text,
-                                    boundingBox = android.graphics.Rect(
-                                        bubble.boundingBox.left,
-                                        (bubble.boundingBox.top * scaleY).toInt(),
-                                        bubble.boundingBox.right,
-                                        (bubble.boundingBox.bottom * scaleY).toInt()
-                                    ),
-                                    confidence = bubble.confidence,
-                                    characterGender = bubble.characterGender,
-                                    emotion = bubble.emotion
-                                )
-                            }
-                            
-                            allBubbles.clear()
-                            allBubbles.addAll(scaledBubbles)
-                            
-                            Log.d(TAG, "Scaled image: ${originalBitmap.width}x${originalBitmap.height} → ${scaledBitmap.width}x${scaledBitmap.height}")
-                            Log.d(TAG, "Scale factor Y: $scaleY")
-                            
-                            originalBitmap.recycle()
-                            scaledBitmap.recycle()
+
+                        // Scale bubble coordinates to match displayed bitmap size
+                        val scaledBubbles = allBubbles.map { bubble ->
+                            SpeechBubble(
+                                text = bubble.text,
+                                boundingBox = android.graphics.Rect(
+                                    bubble.boundingBox.left,
+                                    (bubble.boundingBox.top * displayScaleY).toInt(),
+                                    bubble.boundingBox.right,
+                                    (bubble.boundingBox.bottom * displayScaleY).toInt()
+                                ),
+                                confidence = bubble.confidence,
+                                characterGender = bubble.characterGender,
+                                emotion = bubble.emotion
+                            )
                         }
+
+                        allBubbles.clear()
+                        allBubbles.addAll(scaledBubbles)
+
+                        Log.d(TAG, "Scale factor Y: $displayScaleY")
                     }
                     
                     // Show ScrollView, hide RecyclerView

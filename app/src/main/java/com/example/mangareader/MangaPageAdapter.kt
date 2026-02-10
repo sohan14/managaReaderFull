@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -38,7 +39,7 @@ class MangaPageAdapter(
         
         // Load and SCALE the manga page image to prevent crashes
         val bitmap = try {
-            val fullBitmap = BitmapFactory.decodeFile(page.imagePath)
+            val fullBitmap = loadBitmapFromPath(holder.itemView, page.imagePath)
             if (fullBitmap != null) {
                 scaleBitmapForDisplay(fullBitmap)
             } else null
@@ -85,6 +86,27 @@ class MangaPageAdapter(
                 holder.photoView.setImageBitmap(mutableBitmap)
             } else {
                 holder.photoView.setImageBitmap(bitmap)
+            }
+        }
+    }
+
+    private fun loadBitmapFromPath(view: View, path: String): Bitmap? {
+        if (path.isBlank()) return null
+
+        BitmapFactory.decodeFile(path)?.let { return it }
+
+        return try {
+            view.context.contentResolver.openInputStream(Uri.parse(path))?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        } catch (_: Exception) {
+            // Try assets as a last fallback for bundled sample pages
+            try {
+                view.context.assets.open(path).use { inputStream ->
+                    BitmapFactory.decodeStream(inputStream)
+                }
+            } catch (_: Exception) {
+                null
             }
         }
     }
