@@ -310,7 +310,8 @@ class MangaAnalyzer(private val context: Context) {
                 SpeechBubble(
                     text = bubble.text,
                     boundingBox = adjustedBox,
-                    gender = bubble.gender,
+                    confidence = bubble.confidence,
+                    characterGender = bubble.characterGender,
                     emotion = bubble.emotion
                 )
             }
