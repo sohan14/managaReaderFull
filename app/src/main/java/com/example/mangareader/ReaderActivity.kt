@@ -111,10 +111,8 @@ class ReaderActivity : AppCompatActivity() {
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
-        // Add PagerSnapHelper to snap to complete scenes/pages
-        // User swipes to next scene after reading all bubbles on current scene
-        val snapHelper = androidx.recyclerview.widget.PagerSnapHelper()
-        snapHelper.attachToRecyclerView(recyclerView)
+        // Free scrolling between panels - no snapping
+        // User can scroll naturally between panels with black space in between
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {

@@ -196,10 +196,9 @@ class MangaAnalyzer(private val context: Context) {
         
         val panelBoundaries = detectPanelBoundaries(bitmap)
         
-        // First: Filter out tiny panels (white space separators)
-        DebugLogger.log(TAG, "Step 1: Filtering panels - keeping only real content panels...")
+        // Keep all real panels separate - NO MERGING!
+        DebugLogger.log(TAG, "Keeping panels separate - no merging...")
         
-        val realPanels = mutableListOf<ChunkInfo>()
         val minPanelHeight = 400 // Minimum height for a real panel (skip white space)
         
         for (i in 0 until panelBoundaries.size - 1) {
@@ -210,57 +209,19 @@ class MangaAnalyzer(private val context: Context) {
             // Only keep panels that are real content (not tiny white space)
             if (panelHeight >= minPanelHeight) {
                 val chunkBitmap = Bitmap.createBitmap(bitmap, 0, panelStart, bitmap.width, panelHeight)
-                realPanels.add(ChunkInfo(chunkBitmap, panelStart))
-                DebugLogger.log(TAG, "  Real panel ${realPanels.size}: Y=$panelStart to $panelEnd (${panelHeight}px)")
+                chunks.add(ChunkInfo(chunkBitmap, panelStart))
+                DebugLogger.log(TAG, "  Panel ${chunks.size}: Y=$panelStart to $panelEnd (${panelHeight}px)")
             } else {
-                DebugLogger.log(TAG, "  Skipping tiny: Y=$panelStart (only ${panelHeight}px - white space)")
+                DebugLogger.log(TAG, "  Skipped white space: Y=$panelStart (${panelHeight}px)")
             }
         }
         
-        DebugLogger.log(TAG, "Step 1 complete: ${realPanels.size} real panels found")
-        
-        // Second: Group 2 panels per screen - simple and readable
-        DebugLogger.log(TAG, "Step 2: Grouping panels - 2 panels per screen...")
-        
-        var i = 0
-        while (i < realPanels.size) {
-            if (i + 1 < realPanels.size) {
-                // Combine 2 panels
-                val panel1 = realPanels[i]
-                val panel2 = realPanels[i + 1]
-                
-                val combinedHeight = panel1.bitmap.height + panel2.bitmap.height
-                val combinedBitmap = Bitmap.createBitmap(bitmap.width, combinedHeight, Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(combinedBitmap)
-                
-                // Draw panel 1 at top
-                canvas.drawBitmap(panel1.bitmap, 0f, 0f, null)
-                // Draw panel 2 below panel 1
-                canvas.drawBitmap(panel2.bitmap, 0f, panel1.bitmap.height.toFloat(), null)
-                
-                chunks.add(ChunkInfo(combinedBitmap, panel1.originalYOffset))
-                
-                DebugLogger.log(TAG, "  Page ${chunks.size}: Combined panels ${i+1} + ${i+2}")
-                DebugLogger.log(TAG, "    Panel 1: Y=${panel1.originalYOffset}, H=${panel1.bitmap.height}px")
-                DebugLogger.log(TAG, "    Panel 2: Y=${panel2.originalYOffset}, H=${panel2.bitmap.height}px")
-                DebugLogger.log(TAG, "    Total height: ${combinedHeight}px")
-                
-                i += 2
-            } else {
-                // Last panel alone
-                chunks.add(realPanels[i])
-                DebugLogger.log(TAG, "  Page ${chunks.size}: Single panel ${i+1} (last one)")
-                DebugLogger.log(TAG, "    Panel: Y=${realPanels[i].originalYOffset}, H=${realPanels[i].bitmap.height}px")
-                i++
-            }
-        }
-        
-        DebugLogger.log(TAG, "Step 2 complete: Created ${chunks.size} pages from ${realPanels.size} panels")
+        DebugLogger.log(TAG, "Total: ${chunks.size} separate panels (no merging)")
         
         DebugLogger.log(TAG, "=== FINAL RESULT ===")
-        DebugLogger.log(TAG, "Created ${chunks.size} pages total")
-        DebugLogger.log(TAG, "Each page shows 2 panels stacked vertically")
-        DebugLogger.log(TAG, "User can read both panels, then swipe to next 2 panels")
+        DebugLogger.log(TAG, "Created ${chunks.size} separate panels (NO merging)")
+        DebugLogger.log(TAG, "User can scroll between panels")
+        DebugLogger.log(TAG, "Black space between panels is natural/OK")
         
         return chunks
     }

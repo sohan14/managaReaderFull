@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 2 panels per screen - stacked vertically, natural height -->
+<!-- Separate panels - scroll freely, black space between panels OK -->
 <com.github.chrisbanes.photoview.PhotoView
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/mangaPageImage"
