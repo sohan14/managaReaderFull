@@ -784,21 +784,6 @@ class ReaderActivity : AppCompatActivity() {
                     scrollSpeedCard.visibility = View.GONE
                 }
             }
-
-                        
-                        if (currentPageIndex < mangaPages.size) {
-                            recyclerView.smoothScrollToPosition(currentPageIndex)
-                            kotlinx.coroutines.delay(800)
-                        } else {
-                            isPlaying = false
-                            playPauseButton.setImageResource(android.R.drawable.ic_media_play)
-                            statusText.text = "Finished reading manga"
-                            currentPageIndex = 0
-                            break
-                        }
-                    }
-                }
-            }
         }
     }
 
