@@ -399,9 +399,61 @@ class ReaderActivity : AppCompatActivity() {
                     Log.d(TAG, "  1 page with ${allBubbles.size} bubbles")
                     Log.d(TAG, "  Switching to ScrollView for smooth scrolling")
                     
-                    // Load image into PhotoView
-                    val bitmap = BitmapFactory.decodeFile(mangaPages[0].imagePath)
-                    webtoonImage.setImageBitmap(bitmap)
+                    // Load and SCALE image for safe display
+                    val originalBitmap = BitmapFactory.decodeFile(mangaPages[0].imagePath)
+                    if (originalBitmap != null) {
+                        Log.d(TAG, "  Original bitmap: ${originalBitmap.width}x${originalBitmap.height}")
+                        
+                        // Scale to safe size (max 1080 width, 8192 height for webtoons)
+                        val scaledBitmap = scaleBitmapForDisplay(originalBitmap)
+                        
+                        Log.d(TAG, "  Scaled bitmap: ${scaledBitmap.width}x${scaledBitmap.height}")
+                        
+                        // CRITICAL: Save scaled bitmap to NEW file
+                        // PhotoView will load from this file instead of original
+                        val scaledFile = File(cacheDir, "webtoon_scaled.jpg")
+                        scaledFile.outputStream().use { out ->
+                            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                        }
+                        Log.d(TAG, "  Scaled bitmap saved to: ${scaledFile.absolutePath}")
+                        
+                        // Load scaled bitmap into PhotoView from file
+                        val displayBitmap = BitmapFactory.decodeFile(scaledFile.absolutePath)
+                        webtoonImage.setImageBitmap(displayBitmap)
+                        
+                        // Calculate scale factor for bubble coordinates
+                        val scaleX = scaledBitmap.width.toFloat() / originalBitmap.width
+                        val scaleY = scaledBitmap.height.toFloat() / originalBitmap.height
+                        
+                        Log.d(TAG, "  Scale factors: X=${scaleX}, Y=${scaleY}")
+                        
+                        // Scale bubble coordinates to match scaled image
+                        val scaledBubbles = allBubbles.map { bubble ->
+                            SpeechBubble(
+                                text = bubble.text,
+                                boundingBox = android.graphics.Rect(
+                                    (bubble.boundingBox.left * scaleX).toInt(),
+                                    (bubble.boundingBox.top * scaleY).toInt(),
+                                    (bubble.boundingBox.right * scaleX).toInt(),
+                                    (bubble.boundingBox.bottom * scaleY).toInt()
+                                ),
+                                confidence = bubble.confidence,
+                                characterGender = bubble.characterGender,
+                                emotion = bubble.emotion
+                            )
+                        }
+                        
+                        allBubbles.clear()
+                        allBubbles.addAll(scaledBubbles)
+                        
+                        Log.d(TAG, "  Bubble coordinates scaled - first bubble Y: ${scaledBubbles[0].boundingBox.top}")
+                        
+                        // Recycle to free memory
+                        originalBitmap.recycle()
+                        scaledBitmap.recycle()
+                    } else {
+                        Log.e(TAG, "  ERROR: Could not load original bitmap!")
+                    }
                     
                     // Show ScrollView, hide RecyclerView
                     scrollView.visibility = View.VISIBLE
@@ -599,6 +651,40 @@ class ReaderActivity : AppCompatActivity() {
         if (currentPageIndex < mangaPages.size) {
             val page = mangaPages[currentPageIndex]
             statusText.text = "Page ${currentPageIndex + 1}/${mangaPages.size} - ${page.speechBubbles.size} bubbles"
+        }
+    }
+
+    /**
+     * Scale bitmap to safe size for display - prevents 810MB crash!
+     */
+    private fun scaleBitmapForDisplay(bitmap: Bitmap): Bitmap {
+        // Android Canvas limit is ~100MB
+        // Safe max dimension: 4096x4096 = ~67MB for ARGB_8888
+        // For webtoons (tall images), use 1080 width max
+        val MAX_WIDTH = 1080
+        val MAX_HEIGHT = 8192  // Allow tall webtoons
+        
+        val width = bitmap.width
+        val height = bitmap.height
+        
+        // If already small enough, return as-is
+        if (width <= MAX_WIDTH && height <= MAX_HEIGHT) {
+            return bitmap
+        }
+        
+        // Calculate scale to fit within limits
+        val scaleWidth = MAX_WIDTH.toFloat() / width
+        val scaleHeight = MAX_HEIGHT.toFloat() / height
+        val scale = kotlin.math.min(scaleWidth, scaleHeight)
+        
+        val newWidth = (width * scale).toInt()
+        val newHeight = (height * scale).toInt()
+        
+        Log.d(TAG, "Scaling bitmap: ${width}x${height} -> ${newWidth}x${newHeight} (scale=$scale)")
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
+            // Recycle original to free memory
+            if (it != bitmap) bitmap.recycle()
         }
     }
 
