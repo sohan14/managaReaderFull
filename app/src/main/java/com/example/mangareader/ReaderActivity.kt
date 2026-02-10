@@ -111,11 +111,9 @@ class ReaderActivity : AppCompatActivity() {
         adapter = MangaPageAdapter(mangaPages)
         recyclerView.adapter = adapter
         
-        // CRITICAL: Snap to each panel - ONE panel per screen
-        // When user scrolls, it snaps to show next complete panel
-        val snapHelper = androidx.recyclerview.widget.PagerSnapHelper()
-        snapHelper.attachToRecyclerView(recyclerView)
-        DebugLogger.log(TAG, "PagerSnapHelper attached - one panel per screen")
+        // Free continuous scrolling - no snapping
+        // Auto-play will scroll to each bubble naturally
+        DebugLogger.log(TAG, "Continuous scrolling enabled - bubbles will scroll into view before reading")
         
         // Track page changes
         recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -476,13 +474,17 @@ class ReaderActivity : AppCompatActivity() {
                     statusText.text = statusMessage
                     miniStatusText.text = statusMessage  // Also update mini status
                     
-                    // Highlight current bubble on the scene
+                    // CRITICAL: SCROLL TO BUBBLE FIRST, THEN READ!
+                    // 1. Scroll to make bubble visible
+                    adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
+                    
+                    // 2. Wait for scroll to complete
+                    kotlinx.coroutines.delay(500)
+                    
+                    // 3. Highlight current bubble
                     adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
                     
-                    // SCENE-BASED: No need to scroll to bubble
-                    // The entire scene is visible, just highlight current bubble being read
-                    
-                    // Speak the text
+                    // 4. NOW speak the text (bubble is visible!)
                     val success = ttsManager.speak(bubble)
                     
                     if (success) {

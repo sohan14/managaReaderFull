@@ -196,32 +196,19 @@ class MangaAnalyzer(private val context: Context) {
         
         val panelBoundaries = detectPanelBoundaries(bitmap)
         
-        // Keep all real panels separate - NO MERGING!
-        DebugLogger.log(TAG, "Keeping panels separate - no merging...")
+        // SIMPLE APPROACH: Use original continuous webtoon - NO chunking!
+        // Just one big scrollable image
+        DebugLogger.log(TAG, "Using original continuous webtoon - no cuts, no panels")
         
-        val minPanelHeight = 400 // Minimum height for a real panel (skip white space)
+        val originalBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height)
+        chunks.add(ChunkInfo(originalBitmap, 0))
         
-        for (i in 0 until panelBoundaries.size - 1) {
-            val panelStart = panelBoundaries[i]
-            val panelEnd = panelBoundaries[i + 1]
-            val panelHeight = panelEnd - panelStart
-            
-            // Only keep panels that are real content (not tiny white space)
-            if (panelHeight >= minPanelHeight) {
-                val chunkBitmap = Bitmap.createBitmap(bitmap, 0, panelStart, bitmap.width, panelHeight)
-                chunks.add(ChunkInfo(chunkBitmap, panelStart))
-                DebugLogger.log(TAG, "  Panel ${chunks.size}: Y=$panelStart to $panelEnd (${panelHeight}px)")
-            } else {
-                DebugLogger.log(TAG, "  Skipped white space: Y=$panelStart (${panelHeight}px)")
-            }
-        }
-        
-        DebugLogger.log(TAG, "Total: ${chunks.size} separate panels (no merging)")
+        DebugLogger.log(TAG, "Single continuous page: ${bitmap.width}x${bitmap.height}px")
         
         DebugLogger.log(TAG, "=== FINAL RESULT ===")
-        DebugLogger.log(TAG, "Created ${chunks.size} separate panels (NO merging)")
-        DebugLogger.log(TAG, "User can scroll between panels")
-        DebugLogger.log(TAG, "Black space between panels is natural/OK")
+        DebugLogger.log(TAG, "Continuous webtoon - natural flow, no cuts")
+        DebugLogger.log(TAG, "Auto-play: Scroll to bubble FIRST → Then read")
+        DebugLogger.log(TAG, "Zoom: Fills width properly")
         
         return chunks
     }
