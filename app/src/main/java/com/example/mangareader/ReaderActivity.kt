@@ -2,6 +2,7 @@ package com.example.mangareader
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -26,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
 /**
  * Main reading activity with auto-narration and scrolling
@@ -305,15 +307,7 @@ class ReaderActivity : AppCompatActivity() {
                         }
                         
                         // Load bitmap
-                        val bitmap = try {
-                            // Try to load from file path
-                            BitmapFactory.decodeFile(path)
-                        } catch (e: Exception) {
-                            // Try to load from assets
-                            assets.open(path).use { inputStream ->
-                                BitmapFactory.decodeStream(inputStream)
-                            }
-                        }
+                        val bitmap = loadBitmapFromPath(path)
                         
                         if (bitmap != null) {
                             Log.d(TAG, "")
@@ -407,7 +401,7 @@ class ReaderActivity : AppCompatActivity() {
                         Log.d(TAG, "Total bubbles: ${allBubbles.size}")
                         
                         // Load and scale bitmap for single page mode
-                        val originalBitmap = BitmapFactory.decodeFile(mangaPages[0].imagePath)
+                        val originalBitmap = loadBitmapFromPath(mangaPages[0].imagePath)
                         if (originalBitmap != null) {
                             val scaledBitmap = scaleBitmapForDisplay(originalBitmap)
                             
@@ -558,7 +552,7 @@ class ReaderActivity : AppCompatActivity() {
                     Log.d(TAG, "└─────────────────────────────────────┘")
                     
                     // Get visible portion of image
-                    val originalBitmap = BitmapFactory.decodeFile(mangaPages[0].imagePath)
+                    val originalBitmap = loadBitmapFromPath(mangaPages[0].imagePath)
                     if (originalBitmap == null) {
                         Log.e(TAG, "Failed to load bitmap!")
                         break
@@ -650,7 +644,7 @@ class ReaderActivity : AppCompatActivity() {
                     
                     // Check if we've reached the bottom
                     if (currentScrollY >= mangaPages[0].run {
-                        val bmp = BitmapFactory.decodeFile(imagePath)
+                        val bmp = loadBitmapFromPath(imagePath)
                         val h = bmp?.height ?: 0
                         bmp?.recycle()
                         h
@@ -694,7 +688,7 @@ class ReaderActivity : AppCompatActivity() {
                         Log.d(TAG, "  No bubbles yet - OCR-ing visible page now...")
                         
                         // OCR the currently visible page
-                        val bitmap = BitmapFactory.decodeFile(currentPage.imagePath)
+                        val bitmap = loadBitmapFromPath(currentPage.imagePath)
                         if (bitmap != null) {
                             Log.d(TAG, "  Loaded bitmap: ${bitmap.width} x ${bitmap.height}")
                             
@@ -825,6 +819,29 @@ class ReaderActivity : AppCompatActivity() {
         return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
             // Recycle original to free memory
             if (it != bitmap) bitmap.recycle()
+        }
+    }
+
+    private fun loadBitmapFromPath(path: String): Bitmap? {
+        if (path.isBlank()) return null
+
+        // Standard filesystem path
+        BitmapFactory.decodeFile(path)?.let { return it }
+
+        // Content URI (common from Android picker)
+        return try {
+            contentResolver.openInputStream(Uri.parse(path))?.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        } catch (e: Exception) {
+            // App asset fallback for demo images
+            try {
+                assets.open(path).use { inputStream ->
+                    BitmapFactory.decodeStream(inputStream)
+                }
+            } catch (_: IOException) {
+                null
+            }
         }
     }
 
