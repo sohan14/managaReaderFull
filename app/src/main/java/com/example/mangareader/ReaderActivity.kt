@@ -402,8 +402,8 @@ class ReaderActivity : AppCompatActivity() {
 
                         webtoonImage.setImageBitmap(scaledBitmap)
 
-                        // Only recycle original bitmap. PhotoView now owns scaledBitmap.
-                        originalBitmap.recycle()
+                        // Do NOT recycle here: when no scaling is needed, scaledBitmap === originalBitmap
+                        // and recycling would blank the currently displayed image.
                     } else {
                         Log.e(TAG, "Failed to load image for continuous mode: $singlePagePath")
                     }
