@@ -360,15 +360,21 @@ class ReaderActivity : AppCompatActivity() {
                                 
                                 val analysisResult = mangaAnalyzer.analyzePage(bitmap, chunkHeight)
                                 
-                                // Add all detected pages
-                                analysisResult.pages.forEach { pageData ->
-                                    val mangaPage = MangaPage(
-                                        pageNumber = mangaPages.size,
-                                        imagePath = path,
-                                        speechBubbles = pageData.speechBubbles
-                                    )
-                                    
-                                    mangaPages.add(mangaPage)
+                                // Add all detected pages on the main thread and notify adapter
+                                withContext(Dispatchers.Main) {
+                                    val startIndex = mangaPages.size
+                                    val newPages = analysisResult.pages.mapIndexed { pageOffset, pageData ->
+                                        MangaPage(
+                                            pageNumber = startIndex + pageOffset,
+                                            imagePath = path,
+                                            speechBubbles = pageData.speechBubbles
+                                        )
+                                    }
+
+                                    mangaPages.addAll(newPages)
+                                    if (newPages.isNotEmpty()) {
+                                        adapter.notifyItemRangeInserted(startIndex, newPages.size)
+                                    }
                                 }
                                 
                                 bitmap.recycle()
