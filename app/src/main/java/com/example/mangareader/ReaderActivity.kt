@@ -680,42 +680,67 @@ class ReaderActivity : AppCompatActivity() {
                 
             } else {
                 // MULTI-PAGE MODE: Use RecyclerView
+                Log.d(TAG, "📖 Multi-page mode starting")
+                Log.d(TAG, "Total pages: ${mangaPages.size}")
+                
                 while (isPlaying && currentPageIndex < mangaPages.size) {
                     val currentPage = mangaPages[currentPageIndex]
                     
-                    // If page has no bubbles (webtoon mode), OCR it now!
+                    Log.d(TAG, "")
+                    Log.d(TAG, "📄 PAGE $currentPageIndex")
+                    
+                    // If page has no bubbles (webtoon with skipped OCR), OCR it NOW
                     if (currentPage.speechBubbles.isEmpty()) {
-                        Log.d(TAG, "")
-                        Log.d(TAG, "📄 Page $currentPageIndex has no bubbles - OCR-ing now...")
+                        Log.d(TAG, "  No bubbles yet - OCR-ing visible page now...")
                         
+                        // OCR the currently visible page
                         val bitmap = BitmapFactory.decodeFile(currentPage.imagePath)
                         if (bitmap != null) {
+                            Log.d(TAG, "  Loaded bitmap: ${bitmap.width} x ${bitmap.height}")
+                            
                             val screenHeight = resources.displayMetrics.heightPixels
                             val analysisResult = mangaAnalyzer.analyzePage(bitmap, screenHeight)
                             
-                            // Update page with detected bubbles
+                            // Get all bubbles from analysis
                             val bubbles = analysisResult.pages.flatMap { it.speechBubbles }
+                            
+                            // Update page with detected bubbles
                             val updatedPage = currentPage.copy(speechBubbles = bubbles)
                             mangaPages[currentPageIndex] = updatedPage
                             
-                            Log.d(TAG, "  Found ${bubbles.size} bubbles")
+                            Log.d(TAG, "  ✅ Found ${bubbles.size} bubbles")
+                            bubbles.forEachIndexed { i, b ->
+                                Log.d(TAG, "    Bubble $i: '${b.text.take(20)}...'")
+                            }
                             
                             bitmap.recycle()
                         } else {
-                            Log.d(TAG, "  ERROR: Could not load bitmap!")
-                            // Skip to next page
+                            Log.e(TAG, "  ❌ Could not load bitmap!")
                             currentPageIndex++
                             continue
                         }
+                    } else {
+                        Log.d(TAG, "  Already has ${currentPage.speechBubbles.size} bubbles")
                     }
                     
-                    // Now read bubbles in this page
+                    // Get the updated page with bubbles
                     val pageWithBubbles = mangaPages[currentPageIndex]
                     
-                    if (currentBubbleIndex < pageWithBubbles.speechBubbles.size) {
-                        val bubble = pageWithBubbles.speechBubbles[currentBubbleIndex]
+                    // Read ALL bubbles on this page
+                    if (pageWithBubbles.speechBubbles.isEmpty()) {
+                        Log.d(TAG, "  No bubbles on this page - skipping")
+                        currentPageIndex++
+                        continue
+                    }
+                    
+                    Log.d(TAG, "  Reading ${pageWithBubbles.speechBubbles.size} bubble(s)...")
+                    
+                    for ((bubbleIdx, bubble) in pageWithBubbles.speechBubbles.withIndex()) {
+                        if (!isPlaying) break
                         
-                        // Update status with emotion indicator
+                        Log.d(TAG, "")
+                        Log.d(TAG, "  🗣️ Bubble ${bubbleIdx + 1}/${pageWithBubbles.speechBubbles.size}: '${bubble.text.take(30)}...'")
+                        
                         val emotionIcon = when (bubble.emotion) {
                             Emotion.HAPPY -> "😊"
                             Emotion.SAD -> "😢"
@@ -725,28 +750,41 @@ class ReaderActivity : AppCompatActivity() {
                             Emotion.NEUTRAL -> "💬"
                         }
                         val statusMessage = "$emotionIcon ${bubble.text.take(30)}..."
-                        statusText.text = statusMessage
-                        miniStatusText.text = statusMessage
                         
-                        // Scroll to bubble first
-                        adapter.scrollToBubble(currentPageIndex, currentBubbleIndex, recyclerView)
-                        kotlinx.coroutines.delay(500)
-                        
-                        // Highlight bubble
-                        adapter.highlightBubble(currentPageIndex, currentBubbleIndex)
-                        
-                        // Speak the text
-                        val success = ttsManager.speak(bubble)
-                        
-                        if (success) {
-                            currentBubbleIndex++
-                        } else {
-                            currentBubbleIndex++
+                        withContext(Dispatchers.Main) {
+                            statusText.text = statusMessage
+                            miniStatusText.text = statusMessage
                         }
-                    } else {
-                        // Move to next page
-                        currentBubbleIndex = 0
-                        currentPageIndex++
+                        
+                        // Speak the bubble
+                        ttsManager.speak(bubble)
+                    }
+                    
+                    Log.d(TAG, "  ✅ Finished reading all bubbles on page $currentPageIndex")
+                    
+                    // Move to next page
+                    currentPageIndex++
+                    currentBubbleIndex = 0
+                    
+                    if (currentPageIndex < mangaPages.size) {
+                        Log.d(TAG, "  ⬇️ Scrolling to page $currentPageIndex")
+                        withContext(Dispatchers.Main) {
+                            recyclerView.smoothScrollToPosition(currentPageIndex)
+                        }
+                        kotlinx.coroutines.delay(800)
+                    }
+                }
+                
+                // Finished
+                isPlaying = false
+                withContext(Dispatchers.Main) {
+                    playPauseButton.setImageResource(android.R.drawable.ic_media_play)
+                    statusText.text = "Finished reading!"
+                    miniStatusCard.visibility = View.GONE
+                    scrollSpeedCard.visibility = View.GONE
+                }
+            }
+
                         
                         if (currentPageIndex < mangaPages.size) {
                             recyclerView.smoothScrollToPosition(currentPageIndex)
