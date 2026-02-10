@@ -20,12 +20,12 @@ import com.example.mangareader.model.MangaPage
 import com.example.mangareader.model.SpeechBubble
 import com.example.mangareader.tts.TTSManager
 import com.example.mangareader.utils.DebugLogger
+import com.example.mangareader.utils.ReaderImageEngine
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 /**
  * Main reading activity with auto-narration and scrolling
@@ -394,16 +394,11 @@ class ReaderActivity : AppCompatActivity() {
                     // Always show the selected page image in continuous mode.
                     // Previously we only loaded image when OCR pre-detected bubbles,
                     // which caused a black screen for viewport-OCR webtoon mode.
-                    val originalBitmap = loadBitmapFromPath(singlePagePath)
                     var displayScaleY = 1.0f
-                    if (originalBitmap != null) {
-                        val scaledBitmap = scaleBitmapForDisplay(originalBitmap)
-                        displayScaleY = scaledBitmap.height.toFloat() / originalBitmap.height
-
-                        webtoonImage.setImageBitmap(scaledBitmap)
-
-                        // Do NOT recycle here: when no scaling is needed, scaledBitmap === originalBitmap
-                        // and recycling would blank the currently displayed image.
+                    val displayImage = ReaderImageEngine.loadScaledBitmap(this@ReaderActivity, singlePagePath)
+                    if (displayImage != null) {
+                        displayScaleY = displayImage.scaleYFromOriginal
+                        webtoonImage.setImageBitmap(displayImage.bitmap)
                     } else {
                         Log.e(TAG, "Failed to load image for continuous mode: $singlePagePath")
                     }
@@ -783,60 +778,14 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     /**
-     * Scale bitmap to safe size for display - prevents 810MB crash!
+     * Legacy wrappers retained for narration/OCR call sites, now routed through ReaderImageEngine.
      */
     private fun scaleBitmapForDisplay(bitmap: Bitmap): Bitmap {
-        // Android Canvas limit is ~100MB
-        // Safe max dimension: 4096x4096 = ~67MB for ARGB_8888
-        // For webtoons (tall images), use 1080 width max
-        val MAX_WIDTH = 1080
-        val MAX_HEIGHT = 8192  // Allow tall webtoons
-        
-        val width = bitmap.width
-        val height = bitmap.height
-        
-        // If already small enough, return as-is
-        if (width <= MAX_WIDTH && height <= MAX_HEIGHT) {
-            return bitmap
-        }
-        
-        // Calculate scale to fit within limits
-        val scaleWidth = MAX_WIDTH.toFloat() / width
-        val scaleHeight = MAX_HEIGHT.toFloat() / height
-        val scale = kotlin.math.min(scaleWidth, scaleHeight)
-        
-        val newWidth = (width * scale).toInt()
-        val newHeight = (height * scale).toInt()
-        
-        Log.d(TAG, "Scaling bitmap: ${width}x${height} -> ${newWidth}x${newHeight} (scale=$scale)")
-        
-        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
-            // Recycle original to free memory
-            if (it != bitmap) bitmap.recycle()
-        }
+        return ReaderImageEngine.scaleBitmapForDisplay(bitmap).bitmap
     }
 
     private fun loadBitmapFromPath(path: String): Bitmap? {
-        if (path.isBlank()) return null
-
-        // Standard filesystem path
-        BitmapFactory.decodeFile(path)?.let { return it }
-
-        // Content URI (common from Android picker)
-        return try {
-            contentResolver.openInputStream(Uri.parse(path))?.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream)
-            }
-        } catch (e: Exception) {
-            // App asset fallback for demo images
-            try {
-                assets.open(path).use { inputStream ->
-                    BitmapFactory.decodeStream(inputStream)
-                }
-            } catch (_: IOException) {
-                null
-            }
-        }
+        return ReaderImageEngine.loadOriginalBitmap(this, path)
     }
 
     override fun onDestroy() {

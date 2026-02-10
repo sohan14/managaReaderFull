@@ -1,18 +1,16 @@
 package com.example.mangareader
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.net.Uri
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.mangareader.model.MangaPage
+import com.example.mangareader.utils.ReaderImageEngine
 import com.github.chrisbanes.photoview.PhotoView
-import kotlin.math.min
 
 /**
  * Adapter for displaying manga pages with zoom support
@@ -37,23 +35,10 @@ class MangaPageAdapter(
     override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
         val page = pages[position]
         
-        // Load and SCALE the manga page image to prevent crashes
-        val bitmap = try {
-            val fullBitmap = loadBitmapFromPath(holder.itemView, page.imagePath)
-            if (fullBitmap != null) {
-                scaleBitmapForDisplay(fullBitmap)
-            } else null
-        } catch (e: Exception) {
-            // Try assets
-            try {
-                holder.itemView.context.assets.open(page.imagePath).use { inputStream ->
-                    val fullBitmap = BitmapFactory.decodeStream(inputStream)
-                    scaleBitmapForDisplay(fullBitmap)
-                }
-            } catch (e: Exception) {
-                null
-            }
-        }
+        // New v2 image pipeline: centralized decode + safe scaling
+        val bitmap = ReaderImageEngine
+            .loadScaledBitmap(holder.itemView.context, page.imagePath)
+            ?.bitmap
         
         if (bitmap != null) {
             // Set zoom limits for webtoon viewing
@@ -87,59 +72,6 @@ class MangaPageAdapter(
             } else {
                 holder.photoView.setImageBitmap(bitmap)
             }
-        }
-    }
-
-    private fun loadBitmapFromPath(view: View, path: String): Bitmap? {
-        if (path.isBlank()) return null
-
-        BitmapFactory.decodeFile(path)?.let { return it }
-
-        return try {
-            view.context.contentResolver.openInputStream(Uri.parse(path))?.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream)
-            }
-        } catch (_: Exception) {
-            // Try assets as a last fallback for bundled sample pages
-            try {
-                view.context.assets.open(path).use { inputStream ->
-                    BitmapFactory.decodeStream(inputStream)
-                }
-            } catch (_: Exception) {
-                null
-            }
-        }
-    }
-    
-    /**
-     * Scale bitmap to safe size for display - prevents 810MB crash!
-     */
-    private fun scaleBitmapForDisplay(bitmap: Bitmap): Bitmap {
-        // Android Canvas limit is ~100MB
-        // Safe max dimension: 4096x4096 = ~67MB for ARGB_8888
-        // For webtoons (tall images), use 1080 width max
-        val MAX_WIDTH = 1080
-        val MAX_HEIGHT = 8192  // Allow tall webtoons
-        
-        val width = bitmap.width
-        val height = bitmap.height
-        
-        // If already small enough, return as-is
-        if (width <= MAX_WIDTH && height <= MAX_HEIGHT) {
-            return bitmap
-        }
-        
-        // Calculate scale to fit within limits
-        val scaleWidth = MAX_WIDTH.toFloat() / width
-        val scaleHeight = MAX_HEIGHT.toFloat() / height
-        val scale = min(scaleWidth, scaleHeight)
-        
-        val newWidth = (width * scale).toInt()
-        val newHeight = (height * scale).toInt()
-        
-        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
-            // Recycle original to free memory
-            if (it != bitmap) bitmap.recycle()
         }
     }
 
