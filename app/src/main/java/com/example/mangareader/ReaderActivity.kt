@@ -390,12 +390,18 @@ class ReaderActivity : AppCompatActivity() {
                 
                 progressBar.visibility = View.GONE
                 
+                Log.d(TAG, "=== MODE DETECTION ===")
+                Log.d(TAG, "Total pages loaded: ${mangaPages.size}")
+                if (mangaPages.isNotEmpty()) {
+                    Log.d(TAG, "Page 0 bubbles: ${mangaPages[0].speechBubbles.size}")
+                }
+                
                 // Check if continuous mode (1 page with many bubbles)
                 if (mangaPages.size == 1 && mangaPages[0].speechBubbles.isNotEmpty()) {
                     isContinuousMode = true
                     allBubbles.addAll(mangaPages[0].speechBubbles)
                     
-                    Log.d(TAG, "CONTINUOUS MODE DETECTED")
+                    Log.d(TAG, "✅ CONTINUOUS MODE DETECTED")
                     Log.d(TAG, "  1 page with ${allBubbles.size} bubbles")
                     Log.d(TAG, "  Switching to ScrollView for smooth scrolling")
                     
@@ -540,9 +546,13 @@ class ReaderActivity : AppCompatActivity() {
         scrollSpeedCard.visibility = View.VISIBLE
         
         lifecycleScope.launch {
+            Log.d(TAG, "=== AUTO-PLAY STARTED ===")
+            Log.d(TAG, "Mode: ${if (isContinuousMode) "CONTINUOUS" else "MULTI-PAGE"}")
+            
             if (isContinuousMode) {
                 // CONTINUOUS MODE: Scroll through one big webtoon
-                DebugLogger.log(TAG, "Starting continuous mode narration")
+                Log.d(TAG, "Using CONTINUOUS mode with ScrollView")
+                Log.d(TAG, "Total bubbles: ${allBubbles.size}")
                 
                 while (isPlaying && currentBubbleIndex < allBubbles.size) {
                     val bubble = allBubbles[currentBubbleIndex]
@@ -565,7 +575,12 @@ class ReaderActivity : AppCompatActivity() {
                     val screenHeight = scrollView.height
                     val targetY = (bubbleY - screenHeight / 2).toInt().coerceAtLeast(0)
                     
-                    DebugLogger.log(TAG, "Scrolling to bubble $currentBubbleIndex at Y=$bubbleY (target scroll=$targetY)")
+                    Log.d(TAG, "📍 Bubble $currentBubbleIndex:")
+                    Log.d(TAG, "  Bubble Y: $bubbleY")
+                    Log.d(TAG, "  Screen height: $screenHeight")
+                    Log.d(TAG, "  Current scroll: ${scrollView.scrollY}")
+                    Log.d(TAG, "  Target scroll: $targetY")
+                    Log.d(TAG, "  ⬇️ SCROLLING NOW...")
                     
                     withContext(Dispatchers.Main) {
                         scrollView.smoothScrollTo(0, targetY)
@@ -573,6 +588,9 @@ class ReaderActivity : AppCompatActivity() {
                     
                     // Wait for scroll to complete
                     kotlinx.coroutines.delay(500)
+                    
+                    Log.d(TAG, "  ✅ After scroll: ${scrollView.scrollY}")
+                    Log.d(TAG, "  🗣️ NOW READING...")
                     
                     // NOW read the bubble
                     val success = ttsManager.speak(bubble)
