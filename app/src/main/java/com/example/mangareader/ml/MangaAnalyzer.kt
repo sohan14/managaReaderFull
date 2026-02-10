@@ -246,38 +246,45 @@ class MangaAnalyzer(private val context: Context) {
         val pages = mutableListOf<PageData>()
         
         chunks.forEachIndexed { chunkIndex, chunkInfo ->
-            DebugLogger.log(TAG, "--- Processing chunk ${chunkIndex + 1}/${chunks.size} ---")
-            
-            val safeBitmap = scaleBitmapSafely(chunkInfo.bitmap)
-            val image = InputImage.fromBitmap(safeBitmap, 0)
-            
-            DebugLogger.log(TAG, "Chunk ${chunkIndex + 1} image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
-            
-            // Process text recognition with error handling
-            val textResult = try {
-                DebugLogger.log(TAG, "Starting Latin text recognition...")
-                val result = textRecognizer.process(image).await()
-                DebugLogger.log(TAG, "Text recognition completed successfully")
-                result
-            } catch (e: Exception) {
-                DebugLogger.log(TAG, "ERROR in text recognition: ${e.message}")
-                DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
-                e.printStackTrace()
-                throw e
-            }
-            
-            // Process face detection with error handling
-            val faces = try {
-                DebugLogger.log(TAG, "Starting face detection...")
-                val result = faceDetector.process(image).await()
-                DebugLogger.log(TAG, "Face detection completed successfully")
-                result
-            } catch (e: Exception) {
-                DebugLogger.log(TAG, "ERROR in face detection: ${e.message}")
-                DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
-                e.printStackTrace()
-                emptyList()
-            }
+            try {
+                DebugLogger.log(TAG, "--- Processing chunk ${chunkIndex + 1}/${chunks.size} ---")
+                
+                val safeBitmap = scaleBitmapSafely(chunkInfo.bitmap)
+                val image = InputImage.fromBitmap(safeBitmap, 0)
+                
+                DebugLogger.log(TAG, "Chunk ${chunkIndex + 1} image size: ${safeBitmap.width} x ${safeBitmap.height} = ${safeBitmap.width * safeBitmap.height} pixels")
+                
+                // Process text recognition with error handling
+                val textResult = try {
+                    DebugLogger.log(TAG, "Starting Latin text recognition...")
+                    val result = textRecognizer.process(image).await()
+                    DebugLogger.log(TAG, "Text recognition completed successfully")
+                    result
+                } catch (e: Exception) {
+                    DebugLogger.log(TAG, "ERROR in text recognition: ${e.message}")
+                    DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
+                    e.printStackTrace()
+                    // Continue with empty result instead of crashing
+                    null
+                }
+                
+                if (textResult == null) {
+                    DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: SKIPPED due to OCR error")
+                    return@forEachIndexed
+                }
+                
+                // Process face detection with error handling
+                val faces = try {
+                    DebugLogger.log(TAG, "Starting face detection...")
+                    val result = faceDetector.process(image).await()
+                    DebugLogger.log(TAG, "Face detection completed successfully")
+                    result
+                } catch (e: Exception) {
+                    DebugLogger.log(TAG, "ERROR in face detection: ${e.message}")
+                    DebugLogger.log(TAG, "Error type: ${e.javaClass.simpleName}")
+                    e.printStackTrace()
+                    emptyList()
+                }
             
             DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: OCR found ${textResult.textBlocks.size} text blocks")
             DebugLogger.log(TAG, "Chunk ${chunkIndex + 1}: Face detection found ${faces.size} faces")
@@ -323,6 +330,12 @@ class MangaAnalyzer(private val context: Context) {
             
             // Create a page for this chunk WITH adjusted bubbles
             pages.add(PageData(chunkInfo.bitmap, adjustedBubbles, chunkInfo.originalYOffset))
+            
+            } catch (e: Exception) {
+                DebugLogger.log(TAG, "CHUNK ${chunkIndex + 1} CRASHED: ${e.message}")
+                e.printStackTrace()
+                // Continue to next chunk instead of crashing entire app
+            }
         }
         
         DebugLogger.log(TAG, "=== OCR Analysis Complete ===")

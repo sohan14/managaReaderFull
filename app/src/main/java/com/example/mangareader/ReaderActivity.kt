@@ -321,68 +321,39 @@ class ReaderActivity : AppCompatActivity() {
                             DebugLogger.log(TAG, "=== PAGE $index LOADED ===")
                             DebugLogger.log(TAG, "Original bitmap size: ${bitmap.width} x ${bitmap.height}")
                             
-                            // Get screen height for optimal chunking (each chunk = one full screen)
-                            val screenHeight = recyclerView.height
-                            val chunkHeight = if (screenHeight > 0) {
-                                screenHeight
-                            } else {
-                                // Fallback: use display metrics if RecyclerView not measured yet  
-                                resources.displayMetrics.heightPixels
-                            }
+                            // Check if this is a tall continuous webtoon
+                            val aspectRatio = bitmap.height.toFloat() / bitmap.width
+                            val isContinuousWebtoon = aspectRatio > 5.0f
                             
-                            DebugLogger.log(TAG, "Chunk height: ${chunkHeight}px (full screen)")
-                            DebugLogger.log(TAG, "Each chunk = one complete screen!")
-                            
-                            val analysisResult = mangaAnalyzer.analyzePage(bitmap, chunkHeight)
-                            
-                            // SCENE-BASED READING: Keep each chunk as a separate page!
-                            // Each chunk = one scene = multiple bubbles
-                            // User reads all bubbles on scene, then moves to next scene
-                            
-                            if (analysisResult.pages.size == 1) {
-                                // Normal single page
-                                val pageData = analysisResult.pages[0]
-                                Log.d(TAG, "Page $index: Found ${pageData.speechBubbles.size} bubbles")
+                            if (isContinuousWebtoon) {
+                                Log.d(TAG, "")
+                                Log.d(TAG, "✅ CONTINUOUS WEBTOON DETECTED!")
+                                Log.d(TAG, "Aspect ratio: $aspectRatio")
+                                Log.d(TAG, "SKIPPING upfront OCR - will OCR on-demand during playback")
+                                Log.d(TAG, "This is MUCH faster!")
+                                Log.d(TAG, "")
                                 
+                                // Create a dummy page with no bubbles
+                                // Bubbles will be detected viewport-by-viewport during playback
                                 val mangaPage = MangaPage(
                                     pageNumber = mangaPages.size,
                                     imagePath = path,
-                                    speechBubbles = pageData.speechBubbles,
-                                    isProcessed = true
+                                    speechBubbles = emptyList(), // Empty - will OCR viewports during playback
+                                    bitmap = null
                                 )
                                 
-                                withContext(Dispatchers.Main) {
-                                    mangaPages.add(mangaPage)
-                                    adapter.notifyItemInserted(mangaPages.size - 1)
-                                }
+                                mangaPages.add(mangaPage)
+                                bitmap.recycle()
+                                
                             } else {
-                                // Tall webtoon chunked for OCR processing
-                                // Combine all chunks into ONE continuous page!
-                                Log.d(TAG, "Page $index: Webtoon with ${analysisResult.pages.size} OCR chunks - combining into one continuous page")
-                                
-                                // Combine all speech bubbles from all chunks
-                                val allBubbles = mutableListOf<SpeechBubble>()
-                                analysisResult.pages.forEach { pageData ->
-                                    Log.d(TAG, "  Chunk at Y=${pageData.originalYOffset}: Found ${pageData.speechBubbles.size} bubbles")
-                                    
-                                    // Add bubbles with their original Y positions from the full image
-                                    allBubbles.addAll(pageData.speechBubbles)
-                                }
-                                
-                                Log.d(TAG, "Total bubbles from all chunks: ${allBubbles.size}")
-                                
-                                // Create ONE page with the original full image
-                                val mangaPage = MangaPage(
-                                    pageNumber = mangaPages.size,
-                                    imagePath = path,  // Original full webtoon image
-                                    speechBubbles = allBubbles,
-                                    isProcessed = true
-                                )
+                                Log.d(TAG, "Normal manga page - running full OCR")
                                 
                                 withContext(Dispatchers.Main) {
                                     mangaPages.add(mangaPage)
                                     adapter.notifyItemInserted(mangaPages.size - 1)
                                 }
+                                
+                                bitmap.recycle()
                             }
                         }
                     }
@@ -390,57 +361,49 @@ class ReaderActivity : AppCompatActivity() {
                 
                 progressBar.visibility = View.GONE
                 
-                Log.d(TAG, "=== MODE DETECTION ===")
-                Log.d(TAG, "Total pages loaded: ${mangaPages.size}")
-                if (mangaPages.isNotEmpty()) {
-                    Log.d(TAG, "Page 0 bubbles: ${mangaPages[0].speechBubbles.size}")
-                }
+                Log.d(TAG, "=== LOADING COMPLETE ===")
+                Log.d(TAG, "Pages: ${mangaPages.size}")
                 
-                // Check if continuous mode (1 page with many bubbles)
-                if (mangaPages.size == 1 && mangaPages[0].speechBubbles.isNotEmpty()) {
+                // ALWAYS use continuous mode for single-page documents
+                if (mangaPages.size == 1) {
                     isContinuousMode = true
+                    
+                    // For continuous webtoons, bubbles will be detected on-demand during playback
+                    // For normal pages, bubbles are already detected
                     allBubbles.addAll(mangaPages[0].speechBubbles)
                     
-                    Log.d(TAG, "✅ CONTINUOUS MODE DETECTED")
-                    Log.d(TAG, "  1 page with ${allBubbles.size} bubbles")
-                    Log.d(TAG, "  Switching to ScrollView for smooth scrolling")
+                    if (allBubbles.isEmpty()) {
+                        Log.d(TAG, "✅ CONTINUOUS WEBTOON MODE - Viewport OCR")
+                        Log.d(TAG, "Bubbles will be detected on-demand during playback")
+                    } else {
+                        Log.d(TAG, "✅ SINGLE PAGE MODE - Using ScrollView")
+                        Log.d(TAG, "Total bubbles: ${allBubbles.size}")
+                    }
                     
-                    // Load and SCALE image for safe display
+                    // Load and scale bitmap
                     val originalBitmap = BitmapFactory.decodeFile(mangaPages[0].imagePath)
                     if (originalBitmap != null) {
-                        Log.d(TAG, "  Original bitmap: ${originalBitmap.width}x${originalBitmap.height}")
-                        
-                        // Scale to safe size (max 1080 width, 8192 height for webtoons)
                         val scaledBitmap = scaleBitmapForDisplay(originalBitmap)
                         
-                        Log.d(TAG, "  Scaled bitmap: ${scaledBitmap.width}x${scaledBitmap.height}")
-                        
-                        // CRITICAL: Save scaled bitmap to NEW file
-                        // PhotoView will load from this file instead of original
+                        // Save scaled bitmap to file
                         val scaledFile = File(cacheDir, "webtoon_scaled.jpg")
                         scaledFile.outputStream().use { out ->
                             scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                         }
-                        Log.d(TAG, "  Scaled bitmap saved to: ${scaledFile.absolutePath}")
                         
-                        // Load scaled bitmap into PhotoView from file
+                        // Load into PhotoView
                         val displayBitmap = BitmapFactory.decodeFile(scaledFile.absolutePath)
                         webtoonImage.setImageBitmap(displayBitmap)
                         
-                        // Calculate scale factor for bubble coordinates
-                        val scaleX = scaledBitmap.width.toFloat() / originalBitmap.width
+                        // Scale bubble coordinates
                         val scaleY = scaledBitmap.height.toFloat() / originalBitmap.height
-                        
-                        Log.d(TAG, "  Scale factors: X=${scaleX}, Y=${scaleY}")
-                        
-                        // Scale bubble coordinates to match scaled image
                         val scaledBubbles = allBubbles.map { bubble ->
                             SpeechBubble(
                                 text = bubble.text,
                                 boundingBox = android.graphics.Rect(
-                                    (bubble.boundingBox.left * scaleX).toInt(),
+                                    bubble.boundingBox.left,
                                     (bubble.boundingBox.top * scaleY).toInt(),
-                                    (bubble.boundingBox.right * scaleX).toInt(),
+                                    bubble.boundingBox.right,
                                     (bubble.boundingBox.bottom * scaleY).toInt()
                                 ),
                                 confidence = bubble.confidence,
@@ -452,34 +415,31 @@ class ReaderActivity : AppCompatActivity() {
                         allBubbles.clear()
                         allBubbles.addAll(scaledBubbles)
                         
-                        Log.d(TAG, "  Bubble coordinates scaled - first bubble Y: ${scaledBubbles[0].boundingBox.top}")
+                        Log.d(TAG, "Scaled image: ${originalBitmap.width}x${originalBitmap.height} → ${scaledBitmap.width}x${scaledBitmap.height}")
+                        Log.d(TAG, "Scale factor Y: $scaleY")
+                        Log.d(TAG, "First bubble Y: ${scaledBubbles.firstOrNull()?.boundingBox?.top}")
                         
-                        // Recycle to free memory
                         originalBitmap.recycle()
                         scaledBitmap.recycle()
-                    } else {
-                        Log.e(TAG, "  ERROR: Could not load original bitmap!")
                     }
                     
                     // Show ScrollView, hide RecyclerView
                     scrollView.visibility = View.VISIBLE
                     recyclerView.visibility = View.GONE
                     
-                    DebugLogger.log(TAG, "Continuous webtoon loaded - ${allBubbles.size} bubbles ready")
+                    Log.d(TAG, "ScrollView shown, RecyclerView hidden")
                 } else {
                     isContinuousMode = false
-                    
-                    Log.d(TAG, "MULTI-PAGE MODE")
-                    Log.d(TAG, "  ${mangaPages.size} pages")
-                    
-                    // Show RecyclerView, hide ScrollView
                     scrollView.visibility = View.GONE
                     recyclerView.visibility = View.VISIBLE
+                    Log.d(TAG, "Multi-page mode - using RecyclerView")
                 }
                 
                 // Count total bubbles
                 val totalBubbles = if (isContinuousMode) allBubbles.size else mangaPages.sumOf { it.speechBubbles.size }
-                Log.d(TAG, "=== FINAL RESULT: ${mangaPages.size} pages, $totalBubbles total bubbles ===")
+                Log.d(TAG, "=== READY TO PLAY ===")
+                Log.d(TAG, "Mode: ${if (isContinuousMode) "CONTINUOUS SCROLL" else "MULTI-PAGE"}")
+                Log.d(TAG, "Total bubbles: $totalBubbles")
                 
                 statusText.text = if (totalBubbles > 0) {
                     "Ready to play - $totalBubbles bubbles found"
@@ -546,67 +506,151 @@ class ReaderActivity : AppCompatActivity() {
         scrollSpeedCard.visibility = View.VISIBLE
         
         lifecycleScope.launch {
-            Log.d(TAG, "=== AUTO-PLAY STARTED ===")
-            Log.d(TAG, "Mode: ${if (isContinuousMode) "CONTINUOUS" else "MULTI-PAGE"}")
+            Log.d(TAG, "")
+            Log.d(TAG, "╔════════════════════════════════════════╗")
+            Log.d(TAG, "║      AUTO-PLAY STARTING!               ║")
+            Log.d(TAG, "╚════════════════════════════════════════╝")
             
             if (isContinuousMode) {
-                // CONTINUOUS MODE: Scroll through one big webtoon
-                Log.d(TAG, "Using CONTINUOUS mode with ScrollView")
-                Log.d(TAG, "Total bubbles: ${allBubbles.size}")
+                // CONTINUOUS MODE: OCR viewport, read, scroll, repeat
+                Log.d(TAG, "✅ CONTINUOUS VIEWPORT MODE")
+                Log.d(TAG, "Will OCR only visible area, then scroll")
+                Log.d(TAG, "")
                 
-                while (isPlaying && currentBubbleIndex < allBubbles.size) {
-                    val bubble = allBubbles[currentBubbleIndex]
+                val screenHeight = scrollView.height
+                scrollView.scrollTo(0, 0) // Start at top
+                
+                Log.d(TAG, "Screen height: $screenHeight px")
+                
+                var currentScrollY = 0
+                var totalBubblesRead = 0
+                
+                while (isPlaying) {
+                    Log.d(TAG, "")
+                    Log.d(TAG, "┌─────────────────────────────────────┐")
+                    Log.d(TAG, "│  OCR-ING VIEWPORT at Y=$currentScrollY")
+                    Log.d(TAG, "└─────────────────────────────────────┘")
                     
-                    // Update status with emotion indicator
-                    val emotionIcon = when (bubble.emotion) {
-                        Emotion.HAPPY -> "😊"
-                        Emotion.SAD -> "😢"
-                        Emotion.ANGRY -> "😠"
-                        Emotion.SURPRISED -> "😲"
-                        Emotion.SCARED -> "😰"
-                        Emotion.NEUTRAL -> "💬"
+                    // Get visible portion of image
+                    val originalBitmap = BitmapFactory.decodeFile(mangaPages[0].imagePath)
+                    if (originalBitmap == null) {
+                        Log.e(TAG, "Failed to load bitmap!")
+                        break
                     }
-                    val statusMessage = "$emotionIcon ${bubble.text.take(30)}..."
-                    statusText.text = statusMessage
-                    miniStatusText.text = statusMessage
                     
-                    // CRITICAL: SCROLL TO BUBBLE FIRST!
-                    val bubbleY = bubble.boundingBox.centerY()
-                    val screenHeight = scrollView.height
-                    val targetY = (bubbleY - screenHeight / 2).toInt().coerceAtLeast(0)
+                    // Calculate visible region (with some overlap for bubbles on edge)
+                    val overlap = 300 // px overlap to catch bubbles on edges
+                    val startY = (currentScrollY - overlap).coerceAtLeast(0)
+                    val endY = (currentScrollY + screenHeight + overlap).coerceAtMost(originalBitmap.height)
+                    val viewportHeight = endY - startY
                     
-                    Log.d(TAG, "📍 Bubble $currentBubbleIndex:")
-                    Log.d(TAG, "  Bubble Y: $bubbleY")
-                    Log.d(TAG, "  Screen height: $screenHeight")
-                    Log.d(TAG, "  Current scroll: ${scrollView.scrollY}")
-                    Log.d(TAG, "  Target scroll: $targetY")
-                    Log.d(TAG, "  ⬇️ SCROLLING NOW...")
+                    Log.d(TAG, "Viewport: Y=$startY to Y=$endY (height=$viewportHeight px)")
+                    
+                    // Extract viewport bitmap
+                    val viewportBitmap = Bitmap.createBitmap(
+                        originalBitmap,
+                        0,
+                        startY,
+                        originalBitmap.width,
+                        viewportHeight
+                    )
+                    
+                    // OCR this viewport ONLY
+                    Log.d(TAG, "Running OCR on viewport...")
+                    val viewportResult = mangaAnalyzer.analyzePage(viewportBitmap, screenHeight)
+                    
+                    // Adjust bubble Y coordinates (they're relative to viewport, need to be absolute)
+                    val viewportBubbles = mutableListOf<SpeechBubble>()
+                    viewportResult.pages.forEach { pageData ->
+                        pageData.speechBubbles.forEach { bubble ->
+                            val adjustedBubble = SpeechBubble(
+                                text = bubble.text,
+                                boundingBox = android.graphics.Rect(
+                                    bubble.boundingBox.left,
+                                    bubble.boundingBox.top + startY, // Adjust to absolute position
+                                    bubble.boundingBox.right,
+                                    bubble.boundingBox.bottom + startY
+                                ),
+                                confidence = bubble.confidence,
+                                characterGender = bubble.characterGender,
+                                emotion = bubble.emotion
+                            )
+                            
+                            // Only include bubbles in current viewport (not overlap area)
+                            val bubbleY = adjustedBubble.boundingBox.centerY()
+                            if (bubbleY >= currentScrollY && bubbleY < currentScrollY + screenHeight) {
+                                viewportBubbles.add(adjustedBubble)
+                            }
+                        }
+                    }
+                    
+                    Log.d(TAG, "Found ${viewportBubbles.size} bubbles in viewport")
+                    
+                    viewportBitmap.recycle()
+                    originalBitmap.recycle()
+                    
+                    // Read bubbles in this viewport
+                    if (viewportBubbles.isEmpty()) {
+                        Log.d(TAG, "No bubbles in this viewport - scrolling down")
+                    } else {
+                        for ((index, bubble) in viewportBubbles.withIndex()) {
+                            if (!isPlaying) break
+                            
+                            totalBubblesRead++
+                            Log.d(TAG, "")
+                            Log.d(TAG, "🗣️ Reading bubble $totalBubblesRead: '${bubble.text.take(30)}...'")
+                            
+                            val emotionIcon = when (bubble.emotion) {
+                                Emotion.HAPPY -> "😊"
+                                Emotion.SAD -> "😢"
+                                Emotion.ANGRY -> "😠"
+                                Emotion.SURPRISED -> "😲"
+                                Emotion.SCARED -> "😰"
+                                Emotion.NEUTRAL -> "💬"
+                            }
+                            val statusMessage = "$emotionIcon ${bubble.text.take(30)}..."
+                            
+                            withContext(Dispatchers.Main) {
+                                statusText.text = statusMessage
+                                miniStatusText.text = statusMessage
+                            }
+                            
+                            ttsManager.speak(bubble)
+                        }
+                    }
+                    
+                    // Scroll down to next viewport
+                    currentScrollY += screenHeight
+                    
+                    // Check if we've reached the bottom
+                    if (currentScrollY >= mangaPages[0].run {
+                        val bmp = BitmapFactory.decodeFile(imagePath)
+                        val h = bmp?.height ?: 0
+                        bmp?.recycle()
+                        h
+                    }) {
+                        Log.d(TAG, "Reached bottom of webtoon!")
+                        break
+                    }
+                    
+                    Log.d(TAG, "")
+                    Log.d(TAG, "⬇️ Scrolling to next viewport (Y=$currentScrollY)")
                     
                     withContext(Dispatchers.Main) {
-                        scrollView.smoothScrollTo(0, targetY)
+                        scrollView.smoothScrollTo(0, currentScrollY)
                     }
                     
-                    // Wait for scroll to complete
-                    kotlinx.coroutines.delay(500)
-                    
-                    Log.d(TAG, "  ✅ After scroll: ${scrollView.scrollY}")
-                    Log.d(TAG, "  🗣️ NOW READING...")
-                    
-                    // NOW read the bubble
-                    val success = ttsManager.speak(bubble)
-                    
-                    if (success) {
-                        currentBubbleIndex++
-                    } else {
-                        currentBubbleIndex++
-                    }
+                    kotlinx.coroutines.delay(800) // Wait for scroll
                 }
                 
                 // Finished
                 isPlaying = false
-                playPauseButton.setImageResource(android.R.drawable.ic_media_play)
-                statusText.text = "Finished reading webtoon"
-                currentBubbleIndex = 0
+                withContext(Dispatchers.Main) {
+                    playPauseButton.setImageResource(android.R.drawable.ic_media_play)
+                    statusText.text = "Finished! Read $totalBubblesRead bubbles"
+                    miniStatusCard.visibility = View.GONE
+                    scrollSpeedCard.visibility = View.GONE
+                }
                 
             } else {
                 // MULTI-PAGE MODE: Use RecyclerView
