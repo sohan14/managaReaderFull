@@ -1,7 +1,6 @@
 package com.example.mangareader
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -21,13 +20,12 @@ import com.example.mangareader.model.MangaPage
 import com.example.mangareader.model.SpeechBubble
 import com.example.mangareader.tts.TTSManager
 import com.example.mangareader.utils.DebugLogger
+import com.example.mangareader.utils.ReaderImageEngine
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.IOException
 
 /**
  * Main reading activity with auto-narration and scrolling
@@ -387,60 +385,51 @@ class ReaderActivity : AppCompatActivity() {
                 // ALWAYS use continuous mode for single-page documents
                 if (mangaPages.size == 1) {
                     isContinuousMode = true
+                    val singlePagePath = mangaPages[0].imagePath
                     
                     // For continuous webtoons, bubbles will be detected on-demand during playback
                     // For normal pages, bubbles are already detected
                     allBubbles.addAll(mangaPages[0].speechBubbles)
+
+                    // Always show the selected page image in continuous mode.
+                    // Previously we only loaded image when OCR pre-detected bubbles,
+                    // which caused a black screen for viewport-OCR webtoon mode.
+                    var displayScaleY = 1.0f
+                    val displayImage = ReaderImageEngine.loadScaledBitmap(this@ReaderActivity, singlePagePath)
+                    if (displayImage != null) {
+                        displayScaleY = displayImage.scaleYFromOriginal
+                        webtoonImage.setImageBitmap(displayImage.bitmap)
+                    } else {
+                        Log.e(TAG, "Failed to load image for continuous mode: $singlePagePath")
+                    }
                     
                     if (allBubbles.isEmpty()) {
                         Log.d(TAG, "✅ CONTINUOUS WEBTOON MODE - Viewport OCR")
                         Log.d(TAG, "Bubbles will be detected on-demand during playback")
-                        Log.d(TAG, "No upfront bitmap loading needed")
                     } else {
                         Log.d(TAG, "✅ SINGLE PAGE MODE - Using ScrollView")
                         Log.d(TAG, "Total bubbles: ${allBubbles.size}")
-                        
-                        // Load and scale bitmap for single page mode
-                        val originalBitmap = loadBitmapFromPath(mangaPages[0].imagePath)
-                        if (originalBitmap != null) {
-                            val scaledBitmap = scaleBitmapForDisplay(originalBitmap)
-                            
-                            // Save scaled bitmap to file
-                            val scaledFile = File(cacheDir, "webtoon_scaled.jpg")
-                            scaledFile.outputStream().use { out ->
-                                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                            }
-                            
-                            // Load into PhotoView
-                            val displayBitmap = BitmapFactory.decodeFile(scaledFile.absolutePath)
-                            webtoonImage.setImageBitmap(displayBitmap)
-                            
-                            // Scale bubble coordinates
-                            val scaleY = scaledBitmap.height.toFloat() / originalBitmap.height
-                            val scaledBubbles = allBubbles.map { bubble ->
-                                SpeechBubble(
-                                    text = bubble.text,
-                                    boundingBox = android.graphics.Rect(
-                                        bubble.boundingBox.left,
-                                        (bubble.boundingBox.top * scaleY).toInt(),
-                                        bubble.boundingBox.right,
-                                        (bubble.boundingBox.bottom * scaleY).toInt()
-                                    ),
-                                    confidence = bubble.confidence,
-                                    characterGender = bubble.characterGender,
-                                    emotion = bubble.emotion
-                                )
-                            }
-                            
-                            allBubbles.clear()
-                            allBubbles.addAll(scaledBubbles)
-                            
-                            Log.d(TAG, "Scaled image: ${originalBitmap.width}x${originalBitmap.height} → ${scaledBitmap.width}x${scaledBitmap.height}")
-                            Log.d(TAG, "Scale factor Y: $scaleY")
-                            
-                            originalBitmap.recycle()
-                            scaledBitmap.recycle()
+
+                        // Scale bubble coordinates to match displayed bitmap size
+                        val scaledBubbles = allBubbles.map { bubble ->
+                            SpeechBubble(
+                                text = bubble.text,
+                                boundingBox = android.graphics.Rect(
+                                    bubble.boundingBox.left,
+                                    (bubble.boundingBox.top * displayScaleY).toInt(),
+                                    bubble.boundingBox.right,
+                                    (bubble.boundingBox.bottom * displayScaleY).toInt()
+                                ),
+                                confidence = bubble.confidence,
+                                characterGender = bubble.characterGender,
+                                emotion = bubble.emotion
+                            )
                         }
+
+                        allBubbles.clear()
+                        allBubbles.addAll(scaledBubbles)
+
+                        Log.d(TAG, "Scale factor Y: $displayScaleY")
                     }
                     
                     // Show ScrollView, hide RecyclerView
@@ -789,60 +778,14 @@ class ReaderActivity : AppCompatActivity() {
     }
 
     /**
-     * Scale bitmap to safe size for display - prevents 810MB crash!
+     * Legacy wrappers retained for narration/OCR call sites, now routed through ReaderImageEngine.
      */
     private fun scaleBitmapForDisplay(bitmap: Bitmap): Bitmap {
-        // Android Canvas limit is ~100MB
-        // Safe max dimension: 4096x4096 = ~67MB for ARGB_8888
-        // For webtoons (tall images), use 1080 width max
-        val MAX_WIDTH = 1080
-        val MAX_HEIGHT = 8192  // Allow tall webtoons
-        
-        val width = bitmap.width
-        val height = bitmap.height
-        
-        // If already small enough, return as-is
-        if (width <= MAX_WIDTH && height <= MAX_HEIGHT) {
-            return bitmap
-        }
-        
-        // Calculate scale to fit within limits
-        val scaleWidth = MAX_WIDTH.toFloat() / width
-        val scaleHeight = MAX_HEIGHT.toFloat() / height
-        val scale = kotlin.math.min(scaleWidth, scaleHeight)
-        
-        val newWidth = (width * scale).toInt()
-        val newHeight = (height * scale).toInt()
-        
-        Log.d(TAG, "Scaling bitmap: ${width}x${height} -> ${newWidth}x${newHeight} (scale=$scale)")
-        
-        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true).also {
-            // Recycle original to free memory
-            if (it != bitmap) bitmap.recycle()
-        }
+        return ReaderImageEngine.scaleBitmapForDisplay(bitmap).bitmap
     }
 
     private fun loadBitmapFromPath(path: String): Bitmap? {
-        if (path.isBlank()) return null
-
-        // Standard filesystem path
-        BitmapFactory.decodeFile(path)?.let { return it }
-
-        // Content URI (common from Android picker)
-        return try {
-            contentResolver.openInputStream(Uri.parse(path))?.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream)
-            }
-        } catch (e: Exception) {
-            // App asset fallback for demo images
-            try {
-                assets.open(path).use { inputStream ->
-                    BitmapFactory.decodeStream(inputStream)
-                }
-            } catch (_: IOException) {
-                null
-            }
-        }
+        return ReaderImageEngine.loadOriginalBitmap(this, path)
     }
 
     override fun onDestroy() {
